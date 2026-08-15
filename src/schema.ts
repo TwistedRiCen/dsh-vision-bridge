@@ -18,8 +18,17 @@
  * policy. Do NOT bump for renderer wording/projection-only changes, anchor
  * wording, config/lifecycle changes, build tooling, or package-version-only
  * changes. Never use the package.json version as cache identity.
+ *
+ * v0.2.1: bumped 1 -> 2 — VISION_PROMPT_MULTI output-envelope hardening and
+ * the multi-only generation policy (temperature: 0) intentionally change the
+ * canonical multi-image Evidence.
+ * v0.2.1 schema robustness: bumped 2 -> 3 — VISION_PROMPT_MULTI now mandates
+ * attachment-local Evidence (exactly one images[] entry per DISTINCT
+ * attachment; cross-attachment merging explicitly forbidden), changing the
+ * canonical multi-image Evidence semantics again. A retry-policy-only change
+ * would NOT bump; this prompt semantic change does.
  */
-export const EVIDENCE_POLICY_VERSION = 1
+export const EVIDENCE_POLICY_VERSION = 3
 
 /** The sealed single-image Evidence contract (Stage 1/1R). */
 export interface VisionEvidence {

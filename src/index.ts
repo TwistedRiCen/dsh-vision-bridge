@@ -20,6 +20,15 @@
  * traversal order; the upstream dispatch happens only after the whole
  * outgoing message set converted successfully.
  *
+ * v0.2.1 (robustness patch): the multi-image Vision analyzer now hardens its
+ * prompt envelope and attachment-separation rules (VISION_PROMPT_MULTI),
+ * forces temperature 0 on MULTI-IMAGE Vision attempts ONLY (single-image and
+ * the downstream text request keep v0.2.0 GenerateOptions behavior), and
+ * applies ONE SHARED retry budget (MAX_MULTI_ATTEMPTS = 2 total Vision
+ * invocations per multi work unit) across strict JSON parse failure and
+ * multi Evidence validation failure — parser and validator semantics stay
+ * strict, no normalization/repair. EVIDENCE_POLICY_VERSION is 3.
+ *
  * Consumed DSH runtime service: llm ONLY. The bridge never reads raw image
  * bytes — ImageBlocks ({type:'image', attachment: ref}) are passed through to
  * the configured vision route; resolving bytes via ctx.attachments.readImage
@@ -365,10 +374,44 @@ function singleEvidenceBlock(evidence: unknown): ContentBlockLike {
 }
 
 /**
- * Stage 3A multi-image PHASE A: exactly ONE Vision call carrying all images
- * of the run in traversal order; consume, parse, and validate the COMPLETE
- * batch Evidence. Any failure throws (fail closed) — nothing downstream is
- * built and nothing is cached.
+ * v0.2.1 schema robustness: ONE shared multi output-contract retry budget.
+ * The total number of multi Vision invocations per work unit is bounded by
+ * this constant — strict JSON parse failure and multi Evidence validation
+ * failure both consume the SAME budget. There is no separate parse budget
+ * and schema budget, and no structural path to a third attempt.
+ */
+const MAX_MULTI_ATTEMPTS = 2
+
+/**
+ * Internal typed classification of ONE completed multi attempt. A completed
+ * attempt is one whose provider stream finished normally (finish stop,
+ * non-empty text) — provider/transport/stream failures never produce an
+ * outcome; they THROW out of collectMultiAttempt unchanged. Retry branching
+ * is decided on this discriminated union, never on exception message text.
+ */
+type MultiAttemptOutcome =
+  | { kind: 'valid'; evidence: MultiVisionEvidence }
+  | { kind: 'parse-failure'; error: VisionJsonParseError }
+  | { kind: 'validation-failure'; violations: string[] }
+
+/**
+ * Stage 3A multi-image PHASE A (v0.2.1 schema robustness): bounded
+ * MAX_MULTI_ATTEMPTS loop with ONE shared output-contract retry budget. Each
+ * iteration is a COMPLETELY FRESH observation: same prompt, same images,
+ * same order, same route/model, same AbortSignal, temperature 0. Attempt
+ * text is strictly parsed and strictly validated; invalid attempt output is
+ * discarded wholesale and NEVER fed into a later attempt.
+ *
+ * - provider/transport/stream failure -> throws immediately, never retried
+ * - strict parse failure              -> consumes the shared budget
+ * - multi Evidence validation failure -> consumes the SAME shared budget
+ * - valid                             -> returns canonical Evidence immediately
+ * - final-attempt failure             -> throws the matching exhausted error
+ *   (VisionJsonParseError or VisionEvidenceValidationError)
+ *
+ * There is no Attempt 3: the loop is bounded by MAX_MULTI_ATTEMPTS and every
+ * terminal branch returns or throws at the final iteration. Any failure
+ * means nothing downstream is built and nothing is cached.
  */
 async function analyzeMultiEvidence(
   ctx: BridgeContextLike,
@@ -376,23 +419,94 @@ async function analyzeMultiEvidence(
   images: ImageBlockLike[],
   signal?: AbortSignal,
 ): Promise<MultiVisionEvidence> {
-  throwIfAborted(signal)
+  for (let attempt = 1; attempt <= MAX_MULTI_ATTEMPTS; attempt++) {
+    // Runs before Attempt 1 AND between a failed attempt and the next one —
+    // a caller abort after Attempt 1 prevents Attempt 2 from ever starting.
+    throwIfAborted(signal)
+    const outcome = await collectMultiOutcome(ctx, routes, images, signal)
+    if (outcome.kind === 'valid') return outcome.evidence
+    if (attempt === MAX_MULTI_ATTEMPTS) {
+      if (outcome.kind === 'parse-failure') {
+        throw new VisionJsonParseError(
+          `[dsh-vision-bridge] vision output is not valid JSON (retry exhausted): ${errText(outcome.error.cause ?? outcome.error)}`,
+          { cause: outcome.error, retryExhausted: true },
+        )
+      }
+      throw new VisionEvidenceValidationError(outcome.violations)
+    }
+    // attempt < MAX_MULTI_ATTEMPTS: discard this attempt completely and make
+    // one fresh observation with the shared budget's remaining allowance.
+  }
+  // Unreachable by construction — every terminal branch above either returns
+  // or throws at the final iteration of the bounded loop.
+  throw new Error('[dsh-vision-bridge] internal error: multi retry loop exited without a classification')
+}
+
+/**
+ * v0.2.1 multi-image attempt abstraction: ONE Vision invocation carrying all
+ * images of the run in traversal order, temperature 0 (MULTI ONLY — the
+ * sealed single-image path never forces temperature), consumed to exact
+ * text. Stream-level failures (aborted/error/tool-calls/missing finish/empty)
+ * throw their existing errors unchanged — they are NOT output-contract
+ * failures and never trigger the shared retry budget.
+ */
+async function collectMultiAttempt(
+  ctx: BridgeContextLike,
+  routes: { visionProvider: string; visionModel: string },
+  images: ImageBlockLike[],
+  signal?: AbortSignal,
+): Promise<string> {
   const content: ContentBlockLike[] = [{ type: 'text', text: VISION_PROMPT_MULTI }, ...images]
-  const text = await collectChunks(
+  return collectChunks(
     ctx.llm.stream({
       provider: routes.visionProvider,
       model: routes.visionModel,
+      temperature: 0,
       messages: [{ role: 'user', content }],
       signal,
     }),
     signal,
   )
-  const parsed = parseJsonStrict(text)
-  const check = validateMultiEvidence(parsed, images.length)
-  if (!check.ok) {
-    throw new Error(`[dsh-vision-bridge] vision evidence failed validation: ${check.violations.join(', ')}`)
+}
+
+/**
+ * Strict-parse one MULTI attempt's text (v0.2.1). Returns the parsed value or
+ * the typed parse failure — the parse outcome is distinguishable from every
+ * other failure class (schema, provider, transport, cancellation, finish
+ * state). This is the ONLY call site that enables the design-reviewed
+ * multi-only leading-U+200B envelope tolerance; the sealed single-image path
+ * keeps the default (no tolerance).
+ */
+function tryParseStrict(text: string): unknown | VisionJsonParseError {
+  try {
+    return parseJsonStrict(text, { tolerateLeadingZwsp: true })
+  } catch (error) {
+    if (error instanceof VisionJsonParseError) return error
+    throw error
   }
-  return check.value
+}
+
+/**
+ * Collect, strictly parse, and strictly validate ONE fresh multi attempt,
+ * classifying the result as a typed outcome. Never throws for output-contract
+ * violations (parse/validation) — those become typed outcomes; it only
+ * propagates provider/transport/stream/cancellation errors from the collect
+ * phase unchanged.
+ */
+async function collectMultiOutcome(
+  ctx: BridgeContextLike,
+  routes: { visionProvider: string; visionModel: string },
+  images: ImageBlockLike[],
+  signal?: AbortSignal,
+): Promise<MultiAttemptOutcome> {
+  const text = await collectMultiAttempt(ctx, routes, images, signal)
+  const parsed = tryParseStrict(text)
+  if (parsed instanceof VisionJsonParseError) {
+    return { kind: 'parse-failure', error: parsed }
+  }
+  const check = validateMultiEvidence(parsed, images.length)
+  if (check.ok) return { kind: 'valid', evidence: check.value }
+  return { kind: 'validation-failure', violations: check.violations }
 }
 
 /**
@@ -572,7 +686,72 @@ export async function collectChunks(
   return text
 }
 
-function parseJsonStrict(text: string): unknown {
+/**
+ * Internal parse-failure discriminator (v0.2.1). Thrown ONLY when strict
+ * JSON parsing fails (parseJsonStrict → JSON.parse) after the Vision stream
+ * completed normally at the provider/stream level. Multi-attempt branching
+ * is decided on `instanceof` this class or the MultiAttemptOutcome union —
+ * never on message-text matching. Internal ONLY: not exported, not part of
+ * the public plugin API contract (public v0.2.0 never exported it);
+ * deterministic tests observe the stable message prefix and the
+ * retry-exhaustion marker instead of class identity.
+ */
+class VisionJsonParseError extends Error {
+  /** True when BOTH attempts failed strict parsing (retry exhausted). */
+  readonly retryExhausted: boolean
+  constructor(message: string, options: { cause?: unknown; retryExhausted?: boolean } = {}) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause })
+    this.name = 'VisionJsonParseError'
+    this.retryExhausted = options.retryExhausted ?? false
+  }
+}
+
+/**
+ * Internal multi-Evidence validation-failure discriminator (v0.2.1 schema
+ * robustness). Thrown ONLY when the FINAL multi attempt parsed successfully
+ * but failed validateMultiEvidence — by construction a multi validation
+ * failure can only surface after the shared retry budget is exhausted, so
+ * retryExhausted is always true and scope is always 'multi'. Internal ONLY:
+ * not exported; deterministic tests observe the stable message substring
+ * ("vision evidence failed validation") and the exhaustion marker. The
+ * sealed single-image path keeps its plain-Error validation failure.
+ */
+class VisionEvidenceValidationError extends Error {
+  readonly scope = 'multi' as const
+  readonly retryExhausted = true as const
+  /** Machine-readable validator violation paths (internal diagnostics). */
+  readonly violations: readonly string[]
+  constructor(violations: readonly string[]) {
+    super(`[dsh-vision-bridge] vision evidence failed validation (retry exhausted): ${violations.join(', ')}`)
+    this.name = 'VisionEvidenceValidationError'
+    this.violations = violations
+  }
+}
+
+/**
+ * Sealed strict parser policy (v0.2.0, retained verbatim): trim whitespace,
+ * tolerate ONE existing outer Markdown code fence, JSON.parse. No
+ * normalization, no repair, no prefix/ellipsis/prose stripping, no regex
+ * extraction, no JSON5. Failures throw the typed {@link VisionJsonParseError}
+ * with the v0.2.0-compatible message prefix.
+ *
+ * v0.2.1 U+200B envelope-noise disposition (design-reviewed): the MULTI-image
+ * path additionally enables ONE bounded syntactic envelope tolerance — strip
+ * a leading run of U+200B ZERO WIDTH SPACE from the parse input, exactly once,
+ * after the existing trim + fence handling and immediately before JSON.parse.
+ * The justification is POSITION-BOUND: U+200B is removed only when it occurs
+ * outside the JSON value, at position 0 of the post-envelope parse input; a
+ * U+200B inside the JSON value (strings/tokens) is never touched. The
+ * remaining input must still be ONE complete JSON value accepted by strict
+ * JSON.parse, and the sealed Evidence validator remains authoritative. This
+ * is syntactic envelope tolerance, NOT semantic Evidence repair. The
+ * single-image path keeps tolerateLeadingZwsp at its default (false) — the
+ * sealed Stage 1/1R behavior is unchanged.
+ */
+function parseJsonStrict(
+  text: string,
+  options: { tolerateLeadingZwsp?: boolean } = {},
+): unknown {
   const trimmed = text.trim()
   let candidate = trimmed
   if (candidate.startsWith('```')) {
@@ -582,10 +761,16 @@ function parseJsonStrict(text: string): unknown {
       candidate = candidate.slice(firstNewline + 1, fenceEnd).trim()
     }
   }
+  if (options.tolerateLeadingZwsp === true) {
+    // Multi-only bounded envelope tolerance (U+200B only, leading run only,
+    // exactly once). Anchored at position 0 of the post-envelope candidate:
+    // it can never alter U+200B inside the JSON value.
+    candidate = candidate.replace(/^\u200B+/, '')
+  }
   try {
     return JSON.parse(candidate)
   } catch (error) {
-    throw new Error(`[dsh-vision-bridge] vision output is not valid JSON: ${errText(error)}`)
+    throw new VisionJsonParseError(`[dsh-vision-bridge] vision output is not valid JSON: ${errText(error)}`, { cause: error })
   }
 }
 
