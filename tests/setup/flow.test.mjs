@@ -416,7 +416,7 @@ test('providerId recursion guards mirror the bridge (I25)', async (t) => {
 
 test('download failure: clean abort, no profile writes (I18)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.2')
+  const release = makeRelease('0.2.3')
   const { lines, log } = makeLogs()
   const fetchImpl = async () => { throw new Error('connection refused (stub)') }
   const result = await runSetup({ argv: [...baseArgs('work'), '--yes'], env, log, releaseMap: releaseMapFor([release]), fetchImpl })
@@ -428,7 +428,7 @@ test('download failure: clean abort, no profile writes (I18)', async (t) => {
 
 test('checksum mismatch: artifact deleted, nothing installed (I19)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.2')
+  const release = makeRelease('0.2.3')
   // Stub fetch returns bytes whose SHA differs from the map entry.
   const fetchImpl = async () => {
     return new Response('tampered bytes', { status: 200 })
@@ -676,7 +676,7 @@ test('anomalous existing bridge row fails loudly with zero writes', async (t) =>
 test('non-interactive missing args produce a usage error', async (t) => {
   const { root, env } = withEnv(t)
   const { lines, log } = makeLogs()
-  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.2')]) })
+  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.3')]) })
   assert.equal(result.exitCode, 1)
   assert.ok(lines.join('\n').includes('--upstream-provider, --vision-provider, and --vision-model are required together'))
 })

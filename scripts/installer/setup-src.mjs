@@ -42,7 +42,7 @@ import { fetch as undiciFetch, EnvHttpProxyAgent } from 'undici'
 /* ------------------------------------------------------------------ */
 
 /** Installer identity. */
-export const SETUP_VERSION = '0.2.2'
+export const SETUP_VERSION = '0.2.3'
 
 /** The one DSH CLI version this installer materializes and drives. */
 export const DSH_PIN = '0.1.0-rc.6'
@@ -58,7 +58,7 @@ export const BRIDGE_PACKAGE_NAME = 'dsh-vision-bridge'
 export const BRIDGE_ROW_ID = 'dsh-vision-bridge'
 
 /** The bridge release this installer installs by default. */
-export const DEFAULT_BRIDGE_VERSION = '0.2.2'
+export const DEFAULT_BRIDGE_VERSION = '0.2.3'
 
 /**
  * Trusted release map. The SHA-256 values here are the ONLY accepted
@@ -67,6 +67,11 @@ export const DEFAULT_BRIDGE_VERSION = '0.2.2'
  * refused unless its SHA-256 matches a mapped entry.
  */
 export const RELEASE_MAP = Object.freeze({
+  '0.2.3': Object.freeze({
+    asset: 'dsh-vision-bridge-0.2.3.tgz',
+    url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz',
+    sha256: 'D6D5D2A3FFECA2FD9213DA9A34A527E19321E8DB44CD0FCFCFCC168B42FE16C1',
+  }),
   '0.2.2': Object.freeze({
     asset: 'dsh-vision-bridge-0.2.2.tgz',
     url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz',

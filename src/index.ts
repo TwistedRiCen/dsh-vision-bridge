@@ -29,6 +29,10 @@
  * multi Evidence validation failure — parser and validator semantics stay
  * strict, no normalization/repair. EVIDENCE_POLICY_VERSION is 3.
  *
+ * v0.2.3 candidate (multi-image cardinality fix): the multi Vision request
+ * interleaves per-attachment boundary labels ("Image i of N:") before each
+ * ImageBlock (anti-merge request construction); EVIDENCE_POLICY_VERSION is 4.
+ *
  * Consumed DSH runtime service: llm ONLY. The bridge never reads raw image
  * bytes — ImageBlocks ({type:'image', attachment: ref}) are passed through to
  * the configured vision route; resolving bytes via ctx.attachments.readImage
@@ -449,6 +453,18 @@ async function analyzeMultiEvidence(
  * text. Stream-level failures (aborted/error/tool-calls/missing finish/empty)
  * throw their existing errors unchanged — they are NOT output-contract
  * failures and never trigger the shared retry budget.
+ *
+ * v0.2.3 candidate (multi-image cardinality root-cause fix): the message
+ * content interleaves an explicit per-attachment boundary label ("Image i of
+ * N:") immediately BEFORE each ImageBlock. Real-provider evidence (v021
+ * real-gate capture) showed the vision model intermittently merging two
+ * visually-adjacent same-class attachments (e.g. two dock screenshots) into
+ * ONE images[] entry — "images.length (expected 2, got 1)" — even though
+ * every layer forwards both ImageBlocks. The labels anchor each attachment
+ * as a separate input so the model no longer reads adjacent images as one
+ * composite. Image order, the one-call batching contract, temperature 0,
+ * and the retry/validation semantics are unchanged; the single-image path
+ * is untouched.
  */
 async function collectMultiAttempt(
   ctx: BridgeContextLike,
@@ -456,7 +472,10 @@ async function collectMultiAttempt(
   images: ImageBlockLike[],
   signal?: AbortSignal,
 ): Promise<string> {
-  const content: ContentBlockLike[] = [{ type: 'text', text: VISION_PROMPT_MULTI }, ...images]
+  const content: ContentBlockLike[] = [{ type: 'text', text: VISION_PROMPT_MULTI }]
+  for (const [index, block] of images.entries()) {
+    content.push({ type: 'text', text: `Image ${index + 1} of ${images.length}:` }, block)
+  }
   return collectChunks(
     ctx.llm.stream({
       provider: routes.visionProvider,

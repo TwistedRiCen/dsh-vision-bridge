@@ -321,13 +321,14 @@ test('R11/R12 successful second attempt -> only validated attempt2 Evidence inse
   assert.ok(wireOf(calls, 1).at(-1).text.includes('SECOND-OK'), 'HIT serves the canonical attempt-2 Evidence')
 })
 
-test('R13 policy key: versions 1/2/3 pairwise distinct; [A,B] != [B,A] preserved', () => {
-  assert.equal(EVIDENCE_POLICY_VERSION, 3, 'v0.2.1 schema-robustness policy version is 3')
+test('R13 policy key: versions 1/2/3/4 pairwise distinct; [A,B] != [B,A] preserved', () => {
+  assert.equal(EVIDENCE_POLICY_VERSION, 4, 'v0.2.3 candidate anti-merge policy version is 4')
   const base = { sessionId: 's1', visionProvider: 'vp', visionModel: 'vm', orderedAttachmentIds: ['a', 'b'] }
   const official = buildEvidenceCacheKey(base)
-  assert.equal(official, JSON.stringify([3, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 3')
+  assert.equal(official, JSON.stringify([4, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 4')
   assert.notEqual(official, JSON.stringify([1, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.0 policy-1 keys are distinct')
   assert.notEqual(official, JSON.stringify([2, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.1 policy-2 keys are distinct')
+  assert.notEqual(official, JSON.stringify([3, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.2 policy-3 keys are distinct')
   assert.notEqual(
     buildEvidenceCacheKey(base),
     buildEvidenceCacheKey({ ...base, orderedAttachmentIds: ['b', 'a'] }),
@@ -524,7 +525,9 @@ test('R23 retry receives no first-attempt malformed text/context', async () => {
   assert.equal(calls.visionStreams.length, 2)
   assert.deepEqual(calls.visionStreams[1].messages, calls.visionStreams[0].messages, 'attempt 2 request is byte-identical to attempt 1')
   const content = calls.visionStreams[1].messages[0].content
-  assert.deepEqual(content.map((b) => b.type), ['text', 'image', 'image'], 'prompt text + images only')
+  assert.deepEqual(content.map((b) => b.type), ['text', 'text', 'image', 'text', 'image'], 'prompt text + per-attachment boundary labels + images')
+  assert.equal(content[1].text, 'Image 1 of 2:', 'attachment 1 boundary label')
+  assert.equal(content[3].text, 'Image 2 of 2:', 'attachment 2 boundary label')
   const allText = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
   assert.ok(!allText.includes('FIRST-JUNK'), 'malformed first output never fed back to the model')
   assert.ok(!allText.includes('Here is the requested analysis'), 'no first-attempt artifact reaches attempt 2')

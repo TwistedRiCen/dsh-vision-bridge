@@ -67,7 +67,7 @@ test('parseArgs rejects unknown flags, missing values, duplicates, stray args', 
 
 test('usageText names the pinned DSH spec and default version', () => {
   const text = usageText()
-  assert.ok(text.includes('0.2.2'))
+  assert.ok(text.includes('0.2.3'))
   assert.ok(text.includes('--what-if'))
   assert.ok(text.includes('--tarball'))
 })
@@ -127,19 +127,23 @@ test('resolveDshHome mirrors DSH precedence and tilde expansion', () => {
 /* release map                                                         */
 /* ------------------------------------------------------------------ */
 
-test('release map is frozen and carries the verified 0.2.1 identity', () => {
+test('release map is frozen and carries the verified 0.2.3 identity; 0.2.2 stays trusted', () => {
   assert.ok(Object.isFrozen(RELEASE_MAP))
-  const entry = RELEASE_MAP['0.2.1']
-  assert.equal(entry.asset, 'dsh-vision-bridge-0.2.1.tgz')
-  assert.equal(entry.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.1/dsh-vision-bridge-0.2.1.tgz')
-  assert.equal(entry.sha256, 'A3E02C67F629C0C30BA74114B77E721C4F48EE884C83E31608E00EE71030837C')
-  assert.match(entry.asset, /^dsh-vision-bridge-0\.2\.1\.tgz$/)
+  const entry = RELEASE_MAP['0.2.3']
+  assert.equal(entry.asset, 'dsh-vision-bridge-0.2.3.tgz')
+  assert.equal(entry.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz')
+  assert.equal(entry.sha256, 'D6D5D2A3FFECA2FD9213DA9A34A527E19321E8DB44CD0FCFCFCC168B42FE16C1')
+  assert.match(entry.asset, /^dsh-vision-bridge-0\.2\.3\.tgz$/)
   assert.ok(entry.url.endsWith(entry.asset))
+  const previous = RELEASE_MAP['0.2.2']
+  assert.equal(previous.sha256, 'D5EB402017756FC5DC54E0E6E01DFA77216DC8B81A1EF3418F01B2962181EA7F', '0.2.2 stays trusted')
+  assert.equal(RELEASE_MAP['0.2.1'].sha256, 'A3E02C67F629C0C30BA74114B77E721C4F48EE884C83E31608E00EE71030837C', '0.2.1 stays trusted')
 })
 
 test('resolveTargetRelease refuses unmapped versions for download', () => {
-  assert.equal(resolveTargetRelease({}).version, '0.2.2')
-  assert.equal(resolveTargetRelease({ versionFlag: '0.2.2' }).source, 'download')
+  assert.equal(resolveTargetRelease({}).version, '0.2.3')
+  assert.equal(resolveTargetRelease({ versionFlag: '0.2.3' }).source, 'download')
+  assert.equal(resolveTargetRelease({ versionFlag: '0.2.2' }).source, 'download', '0.2.2 remains a mapped release')
   assert.throws(() => resolveTargetRelease({ versionFlag: '9.9.9' }), /trusted release map/)
   assert.equal(resolveTargetRelease({ tarballFlag: 'x.tgz' }).source, 'tarball')
   assert.throws(() => resolveTargetRelease({ tarballFlag: 'x.tgz', versionFlag: '9.9.9' }), /trusted release map/)

@@ -147,15 +147,15 @@ flowchart LR
 
 The project is distributed as a GitHub Release tarball (it is **not on npm**).
 The current stable release is
-**[v0.2.2](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2)**.
+**[v0.2.3](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)**.
 
-Release facts for v0.2.2:
+Release facts for v0.2.3:
 
 | | |
 |---|---|
-| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2> |
-| Artifact | `dsh-vision-bridge-0.2.2.tgz` |
-| SHA-256 | published in the `dsh-vision-bridge-0.2.2.tgz.sha256` release asset |
+| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3> |
+| Artifact | `dsh-vision-bridge-0.2.3.tgz` |
+| SHA-256 | published in the `dsh-vision-bridge-0.2.3.tgz.sha256` release asset |
 
 For future versions, follow the same steps with the values from the
 [latest release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest).
@@ -169,7 +169,7 @@ DSH CLI (`@deepseek-ai/dsh@0.1.0-rc.6`). You only need **Node.js >= 22.19**
 and **pnpm** on your `PATH`.
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
@@ -181,7 +181,7 @@ The wizard will:
    Models page. The installer does not guess them: DSH currently has no
    stable catalog API that tools can query, so these three IDs are entered
    manually;
-3. download and verify the v0.2.2 release tarball, install it into the
+3. download and verify the v0.2.3 release tarball, install it into the
    profile, write the bridge configuration (backing up the previous file),
    and validate the result with `dsh --dump-config`.
 
@@ -190,7 +190,7 @@ No Vision request is made during installation.
 To verify the installer file itself before running it (recommended):
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -235,39 +235,39 @@ prerequisites are unchanged: you still need Node.js and pnpm on your `PATH`.
 #### 2. Download the release
 
 Download the artifact from the
-[v0.2.2 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2)
+[v0.2.3 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)
 or with a command:
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz' -OutFile 'dsh-vision-bridge-0.2.2.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz
 ```
 
 #### 3. Verify the checksum
 
 Compare the file's SHA-256 against the value published on the release page
-(the `dsh-vision-bridge-0.2.2.tgz.sha256` release asset). If it differs, do
+(the `dsh-vision-bridge-0.2.3.tgz.sha256` release asset). If it differs, do
 **not** install the file — delete it and download again from the official
 release page.
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.2.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.2.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.2.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.3.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
 ```
 
 #### 4. Install the plugin into your profile
@@ -275,7 +275,7 @@ shasum -a 256 dsh-vision-bridge-0.2.2.tgz # macOS
 Run this from the directory that contains the downloaded file:
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.2.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
 ```
 
 `dsh plugin` initializes the profile on first use, installs the package with
@@ -414,7 +414,7 @@ it does not have. The following flags are supported:
 | `--vision-provider <id>` | Provider route serving the image-capable model. |
 | `--vision-model <id>` | Image-capable model id on the vision route. |
 | `--provider-id <id>` | Optional custom wrapper provider id (defaults to `<upstreamProvider>-vision-bridge`). |
-| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.2`). |
+| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.3`). |
 | `--tarball <path>` | Install from a local release tarball (SHA-256 verified against the trusted release map). |
 | `--yes` | Skip the final confirmation (never skips verification). |
 | `--what-if` | Print the plan — including the exact configuration that would be written — without downloading or writing anything. |
@@ -438,26 +438,26 @@ Already have DSH installed and a profile? Here is the shortest verified path.
 Every `dsh …` command can also be run as `npx @deepseek-ai/dsh …` if `dsh`
 is not on your `PATH` (see [1. Prerequisites](#1-prerequisites)):
 
-1. **Download** the v0.2.2 artifact from the
-   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2):
+1. **Download** the v0.2.3 artifact from the
+   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3):
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz' -OutFile 'dsh-vision-bridge-0.2.2.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
    ```
 
 2. **Verify** the checksum ([details](#3-verify-the-checksum)):
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.2.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
    ```
 
    Compare it against the value published on the release page (the
-   `dsh-vision-bridge-0.2.2.tgz.sha256` release asset).
+   `dsh-vision-bridge-0.2.3.tgz.sha256` release asset).
 
 3. **Install** into your profile ([details](#4-install-the-plugin-into-your-profile)):
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.2.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
    ```
 
 4. **Configure** the row in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`
@@ -553,6 +553,12 @@ the downstream model reasons over the Evidence, not over merged image data.
 If a request contains **N image attachments**, the bridge treats them as
 follows:
 
+- **Per-attachment boundary labels (v0.2.3).** To improve multi-image
+  separation robustness, v0.2.3 interleaves an explicit per-attachment
+  boundary label (`Image i of N:`) immediately before each native image block
+  in the multi-image Vision request. Strict cardinality validation and the
+  two-attempt fail-closed retry policy remain unchanged and remain the final
+  safety boundary.
 - The images of one consecutive run become **one work unit** analyzed by
   **one Vision call** that carries all N images in traversal order.
 - Each attachment remains an **independent source image**. Adjacent,

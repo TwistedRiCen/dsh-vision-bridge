@@ -361,13 +361,14 @@ test('S-R13 later same-session repeat -> cache HIT -> zero additional Vision cal
   assert.ok(!hitWire.at(-1).text.includes('FIRST-MERGED'), 'attempt-1 Evidence was never cached')
 })
 
-test('S-R14 policy version 3 participates in the cache key; policy 1/2/3 pairwise distinct; order semantic', () => {
-  assert.equal(EVIDENCE_POLICY_VERSION, 3, 'schema-robustness policy version is 3')
+test('S-R14 policy version 4 participates in the cache key; policy 1/2/3/4 pairwise distinct; order semantic', () => {
+  assert.equal(EVIDENCE_POLICY_VERSION, 4, 'v0.2.3 candidate anti-merge policy version is 4')
   const base = { sessionId: 's1', visionProvider: 'vp', visionModel: 'vm', orderedAttachmentIds: ['a', 'b'] }
   const official = buildEvidenceCacheKey(base)
-  assert.equal(official, JSON.stringify([3, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 3')
+  assert.equal(official, JSON.stringify([4, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 4')
   assert.notEqual(official, JSON.stringify([1, 's1', 'vp', 'vm', ['a', 'b']]), 'policy-1 keys are distinct')
   assert.notEqual(official, JSON.stringify([2, 's1', 'vp', 'vm', ['a', 'b']]), 'policy-2 keys are distinct')
+  assert.notEqual(official, JSON.stringify([3, 's1', 'vp', 'vm', ['a', 'b']]), 'policy-3 keys are distinct')
   assert.notEqual(
     JSON.stringify([1, 's1', 'vp', 'vm', ['a', 'b']]),
     JSON.stringify([2, 's1', 'vp', 'vm', ['a', 'b']]),
@@ -463,7 +464,9 @@ test('S-R18 attempt 2 request is bridge-equivalent to attempt 1: no attempt-1 ou
   assert.equal(calls.visionStreams.length, 2)
   assert.deepEqual(calls.visionStreams[1].messages, calls.visionStreams[0].messages, 'attempt 2 payload byte-identical to attempt 1')
   const content = calls.visionStreams[1].messages[0].content
-  assert.deepEqual(content.map((b) => b.type), ['text', 'image', 'image'], 'prompt text + images only')
+  assert.deepEqual(content.map((b) => b.type), ['text', 'text', 'image', 'text', 'image'], 'prompt text + per-attachment boundary labels + images')
+  assert.equal(content[1].text, 'Image 1 of 2:', 'attachment 1 label')
+  assert.equal(content[3].text, 'Image 2 of 2:', 'attachment 2 label')
   const allText = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
   assert.ok(!allText.includes('FIRST-MERGED'), 'attempt-1 Evidence never fed back')
   assert.ok(!allText.includes('images.length'), 'no validation violations fed back')

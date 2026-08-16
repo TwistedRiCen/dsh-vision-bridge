@@ -50,17 +50,20 @@ test('key inequality: attachment ids with quotes/commas are structurally safe', 
   )
 })
 
-test('key participation: evidencePolicyVersion changes the key (v1/v2/v3 encodings pairwise distinct)', () => {
-  // v0.2.1 schema robustness: EVIDENCE_POLICY_VERSION is now 3 — the
-  // official key must differ from BOTH the sealed v0.2.0 (policy 1) and the
-  // intermediate v0.2.1 candidate (policy 2) encodings of the same inputs.
+test('key participation: evidencePolicyVersion changes the key (v1/v2/v3/v4 encodings pairwise distinct)', () => {
+  // v0.2.3 candidate anti-merge request construction: EVIDENCE_POLICY_VERSION
+  // is now 4 — the official key must differ from the sealed v0.2.0 (policy 1),
+  // the v0.2.1 candidate (policy 2), and the v0.2.2 release (policy 3)
+  // encodings of the same inputs.
   const official = key()
   const v1 = JSON.stringify([1, 's1', 'vp', 'vm', ['a']])
   const v2 = JSON.stringify([2, 's1', 'vp', 'vm', ['a']])
   const v3 = JSON.stringify([3, 's1', 'vp', 'vm', ['a']])
-  assert.equal(official, v3, 'official key embeds the current policy version 3')
-  assert.notEqual(v1, v3, 'v0.2.0 policy-1 keys are distinct')
-  assert.notEqual(v2, v3, 'v0.2.1 policy-2 keys are distinct')
+  const v4 = JSON.stringify([4, 's1', 'vp', 'vm', ['a']])
+  assert.equal(official, v4, 'official key embeds the current policy version 4')
+  assert.notEqual(v1, v4, 'v0.2.0 policy-1 keys are distinct')
+  assert.notEqual(v2, v4, 'v0.2.1 policy-2 keys are distinct')
+  assert.notEqual(v3, v4, 'v0.2.2 policy-3 keys are distinct')
   assert.notEqual(v1, v2, 'policy 1 and 2 are also distinct')
 })
 

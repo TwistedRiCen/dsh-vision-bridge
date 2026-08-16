@@ -27,8 +27,14 @@
  * attachment; cross-attachment merging explicitly forbidden), changing the
  * canonical multi-image Evidence semantics again. A retry-policy-only change
  * would NOT bump; this prompt semantic change does.
+ *
+ * v0.2.3 candidate: bumped 3 -> 4 — the multi Vision request now interleaves
+ * an explicit per-attachment boundary label ("Image i of N:") immediately
+ * before each ImageBlock, changing what the vision model receives for the
+ * same attachment set (anti-merge request construction), so canonical
+ * multi-image Evidence semantics change.
  */
-export const EVIDENCE_POLICY_VERSION = 3
+export const EVIDENCE_POLICY_VERSION = 4
 
 /** The sealed single-image Evidence contract (Stage 1/1R). */
 export interface VisionEvidence {

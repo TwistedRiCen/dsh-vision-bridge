@@ -154,8 +154,8 @@ test('T2 two images same user-message run: one batch call, in-place anchors, one
   assert.deepEqual(seen[0], {
     count: 2,
     attachments: ['sha256:att-a', 'sha256:att-b'],
-    blockTypes: ['text', 'image', 'image'],
-  }, 'one user message carrying both ImageBlocks, A then B')
+    blockTypes: ['text', 'text', 'image', 'text', 'image'],
+  }, 'one user message carrying prompt + per-attachment boundary labels + both ImageBlocks, A then B')
 
   const wire = calls.upstreamStreams[0].messages[0].content
   assert.deepEqual(wire.slice(0, 5), [

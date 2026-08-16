@@ -128,15 +128,15 @@ flowchart LR
 ## 安装
 
 本项目通过 GitHub Release 的 tarball 分发（**不在 npm 上**）。当前稳定版本是
-**[v0.2.2](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2)**。
+**[v0.2.3](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)**。
 
-v0.2.2 版本信息：
+v0.2.3 版本信息：
 
 | | |
 |---|---|
-| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2> |
-| 产物文件 | `dsh-vision-bridge-0.2.2.tgz` |
-| SHA-256 | 以 `dsh-vision-bridge-0.2.2.tgz.sha256` Release 资产中公布的值为准 |
+| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3> |
+| 产物文件 | `dsh-vision-bridge-0.2.3.tgz` |
+| SHA-256 | 以 `dsh-vision-bridge-0.2.3.tgz.sha256` Release 资产中公布的值为准 |
 
 对于后续版本，请使用同样的步骤，数值以
 [最新 Release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest)
@@ -150,7 +150,7 @@ v0.2.2 版本信息：
 具备 **Node.js >= 22.19** 与 **pnpm**。
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
@@ -161,7 +161,7 @@ node .\setup.mjs
    Vision 模型 ID。这些 ID 可以在你的 DSH Models 页面查看。安装器不会替你
    猜测：DSH 目前没有可供工具查询的稳定 catalog API，因此这三个 ID 需要
    手动输入；
-3. 下载并校验 v0.2.2 Release tarball，把它安装进 profile，写入桥接配置
+3. 下载并校验 v0.2.3 Release tarball，把它安装进 profile，写入桥接配置
    （先备份旧文件），并用 `dsh --dump-config` 验证结果。
 
 安装过程中不会发起任何 Vision 请求。
@@ -169,7 +169,7 @@ node .\setup.mjs
 运行前校验安装器文件本身（推荐）：
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -209,38 +209,38 @@ npx @deepseek-ai/dsh --version
 
 #### 2. 下载 Release 产物
 
-从 [v0.2.2 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2)
+从 [v0.2.3 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)
 下载，或用命令下载：
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz' -OutFile 'dsh-vision-bridge-0.2.2.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz
 ```
 
 #### 3. 校验校验和
 
-把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.2.tgz.sha256`
+把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.3.tgz.sha256`
 Release 资产）对比。如果不一致，**不要**安装 —— 删除文件并从官方 Release
 页面重新下载。
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.2.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.2.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.2.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.3.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
 ```
 
 #### 4. 把插件安装进 profile
@@ -248,7 +248,7 @@ shasum -a 256 dsh-vision-bridge-0.2.2.tgz # macOS
 在包含下载文件的目录中执行：
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.2.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
 ```
 
 `dsh plugin` 会在首次使用时初始化 profile，用 pnpm 安装该包，然后对
@@ -380,7 +380,7 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 | `--vision-provider <id>` | 提供视觉模型的 provider 路由。 |
 | `--vision-model <id>` | Vision 路由上支持图片的模型 ID。 |
 | `--provider-id <id>` | 可选的合成包装 provider ID（默认 `<upstreamProvider>-vision-bridge`）。 |
-| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.2`）。 |
+| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.3`）。 |
 | `--tarball <path>` | 从本地 Release tarball 安装（SHA-256 会对受信版本表校验）。 |
 | `--yes` | 跳过最终确认（绝不跳过校验）。 |
 | `--what-if` | 只打印计划 —— 包括将要写入的确切配置 —— 不下载、不写入任何内容。 |
@@ -400,24 +400,24 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 不在你的 `PATH` 中，所有 `dsh …` 命令都可以写成 `npx @deepseek-ai/dsh …`
 （见[1. 前置条件](#1-前置条件)）：
 
-1. **下载** v0.2.2 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.2)）：
+1. **下载** v0.2.3 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)）：
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.2/dsh-vision-bridge-0.2.2.tgz' -OutFile 'dsh-vision-bridge-0.2.2.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
    ```
 
 2. **校验**校验和（[细节](#3-校验校验和)）：
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.2.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
    ```
 
-   与 Release 页面公布的值（`dsh-vision-bridge-0.2.2.tgz.sha256` 资产）对比。
+   与 Release 页面公布的值（`dsh-vision-bridge-0.2.3.tgz.sha256` 资产）对比。
 
 3. **安装**到你的 profile（[细节](#4-把插件安装进-profile)）：
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.2.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
    ```
 
 4. **配置** `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中的行
@@ -507,6 +507,10 @@ sequence that can be verified from the images.
 
 当请求包含 **N 张图片附件**时，桥接插件按如下方式处理：
 
+- **逐附件边界标签（v0.2.3）。** 为提高多图分离的健壮性，v0.2.3 会在多图
+  Vision 请求中，在每个原生 image block 之前插入明确的逐附件边界标签
+  （`Image i of N:`）。严格的图片基数校验与最多两次的失败关闭重试策略保持
+  不变，仍是最终的安全边界。
 - 一个连续片段中的图片构成**一个工作单元**，由**一次 Vision 调用**按遍历
   顺序携带全部 N 张图片进行分析。
 - 每张附件始终是**独立的源图片**。相邻的、视觉相关的或视觉连续的附件
@@ -661,7 +665,8 @@ uncertainty  —— 模型无法读取或核实的内容
 6. 重做一次冒烟测试（先一张图，再两张图）。
 
 升级会替换已安装的包；profile 中的 bundle 条目和 `cordis.patch.yml` 里的
-配置条目保持不变。
+配置条目保持不变。（安装器会自动执行同样的升级：下载 → 校验 → `plugin add`，
+并保留你的配置。）
 
 ## 卸载
 

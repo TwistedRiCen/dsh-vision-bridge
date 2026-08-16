@@ -68,6 +68,6 @@ test('I40: release map is well-formed and names deterministic assets', () => {
 })
 
 test('frozen constants are internally consistent', () => {
-  assert.match(SETUP_VERSION, /^0\.2\.2$/)
+  assert.match(SETUP_VERSION, /^0\.2\.3$/)
   assert.equal(DSH_PIN, '0.1.0-rc.6')
 })
