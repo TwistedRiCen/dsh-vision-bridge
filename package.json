@@ -1,6 +1,6 @@
 {
   "name": "dsh-vision-bridge",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "DSH-native vision bridge for text-only models with native image attachments, multi-image evidence batching, and session-scoped validated Evidence caching.",
   "type": "module",
   "license": "MIT",
@@ -22,12 +22,17 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:installer": "node scripts/installer/build.mjs",
     "test": "npm run build && node --test",
+    "test:installer": "node scripts/installer/build.mjs && node --test \"tests/setup/*.test.mjs\"",
     "pack": "pnpm pack"
   },
   "devDependencies": {
     "@types/node": "^22.19.7",
-    "typescript": "^5.9.3"
+    "esbuild": "0.28.2",
+    "typescript": "^5.9.3",
+    "undici": "7.29.0",
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": ">=22.19"

@@ -1,0 +1,9 @@
+/* dsh-vision-bridge installer — bundled third-party attribution:
+ * - yaml v2.9.0 — (c) Eemeli Aro — ISC License — https://github.com/eemeli/yaml
+ * - undici v7.29.0 — (c) undici Contributors — MIT License — https://github.com/nodejs/undici
+ * Full notices: THIRD_PARTY_NOTICES.md in the dsh-vision-bridge repository.
+ * This banner also provides the CommonJS require bridge the bundled undici
+ * modules need (their lazy require('node:*') calls) inside this ESM artifact.
+ */
+import { createRequire as __setup_createRequire } from 'node:module';
+const require = __setup_createRequire(import.meta.url);
