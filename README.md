@@ -3,18 +3,28 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 [![GitHub release](https://img.shields.io/github/v/release/TwistedRiCen/dsh-vision-bridge)](https://github.com/TwistedRiCen/dsh-vision-bridge/releases)
+[![npm](https://img.shields.io/npm/v/@liangdacheng/dsh-vision-bridge)](https://www.npmjs.com/package/@liangdacheng/dsh-vision-bridge)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Node: >=22.19](https://img.shields.io/badge/node-%3E%3D22.19-green)](package.json)
 
-**A DSH-native bridge that gives text-only model workflows native image
-attachments.** When a request contains images, `dsh-vision-bridge` sends them
+**A DSH-native Vision Evidence bridge for text-only reasoning models.** When a
+request contains images, `dsh-vision-bridge` sends them
 to an image-capable Vision model on a DSH route you configure, converts the
 result into validated structured **Evidence**, and hands that Evidence to your
 text-only reasoning model as clearly labeled, untrusted observed data.
 
 > Community plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) —
-> not affiliated with or endorsed by DeepSeek. Distributed as a GitHub Release
-> tarball; **not published on npm**.
+> not affiliated with or endorsed by DeepSeek.
+>
+> Official distribution:
+>
+> - npm: **`@liangdacheng/dsh-vision-bridge`**
+> - GitHub Releases: **`TwistedRiCen/dsh-vision-bridge`** — latest stable
+>   [v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+>
+> Also discoverable under the
+> [DSH Community Plugins](https://github.com/topics/dsh-plugin) GitHub topic
+> (`dsh-plugin`).
 
 ## Table of contents
 

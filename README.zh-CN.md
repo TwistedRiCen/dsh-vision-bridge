@@ -3,14 +3,23 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 [![GitHub release](https://img.shields.io/github/v/release/TwistedRiCen/dsh-vision-bridge)](https://github.com/TwistedRiCen/dsh-vision-bridge/releases)
+[![npm](https://img.shields.io/npm/v/@liangdacheng/dsh-vision-bridge)](https://www.npmjs.com/package/@liangdacheng/dsh-vision-bridge)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Node: >=22.19](https://img.shields.io/badge/node-%3E%3D22.19-green)](package.json)
 
-**一个 DSH 原生的桥接插件，让纯文本模型工作流获得原生图片附件能力。** 当请求中包含图片时，`dsh-vision-bridge` 会把图片发送给你配置的 DSH 路由上的视觉（Vision）模型，将返回结果转换为经过校验的结构化 **Evidence（证据数据）**，再以明确标记为不可信观测数据的文本形式交给下游的纯文本推理模型。
+**为纯文本推理模型提供 DSH 原生图片附件能力的 Vision Evidence 桥接插件。** 当请求中包含图片时，`dsh-vision-bridge` 会把图片发送给你配置的 DSH 路由上的视觉（Vision）模型，将返回结果转换为经过校验的结构化 **Evidence（证据数据）**，再以明确标记为不可信观测数据的文本形式交给下游的纯文本推理模型。
 
 > 这是 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的社区插件 ——
-> 与 DeepSeek 无隶属关系，也未获得其背书。通过 GitHub Release 的 tarball 分发；
-> **未发布到 npm**。
+> 与 DeepSeek 无隶属关系，也未获得其背书。
+>
+> 官方分发渠道：
+>
+> - npm：**`@liangdacheng/dsh-vision-bridge`**
+> - GitHub Releases：**`TwistedRiCen/dsh-vision-bridge`** —— 最新稳定版本
+>   [v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+>
+> 也可通过 [DSH Community Plugins](https://github.com/topics/dsh-plugin)
+> GitHub 主题（`dsh-plugin`）发现。
 
 ## 目录
 
