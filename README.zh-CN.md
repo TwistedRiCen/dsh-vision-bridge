@@ -127,16 +127,29 @@ flowchart LR
 
 ## 安装
 
-本项目通过 GitHub Release 的 tarball 分发（**不在 npm 上**）。当前稳定版本是
-**[v0.2.3](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)**。
+本项目通过两个官方渠道分发：
 
-v0.2.3 版本信息：
+| 渠道 | 标识 |
+|---|---|
+| GitHub Release | 仓库 `dsh-vision-bridge` —— Release tarball + 引导式安装器 |
+| npm | 官方 npm 包 **`@liangdacheng/dsh-vision-bridge`**（public，`registry.npmjs.org`） |
+
+> **重要：** 本项目官方 npm 包为 `@liangdacheng/dsh-vision-bridge`。
+> npm 上未带 scope 的 `dsh-vision-bridge` 与本项目无关，也不是由本仓库发布
+> 或维护；不要将其作为本项目安装。
+
+npm 发布从 v0.2.4 开始；v0.2.3 及更早版本仅通过 GitHub Release 分发，从未
+发布到 npm。当前稳定版本是
+**[v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)**。
+
+v0.2.4 版本信息：
 
 | | |
 |---|---|
-| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3> |
-| 产物文件 | `dsh-vision-bridge-0.2.3.tgz` |
-| SHA-256 | 以 `dsh-vision-bridge-0.2.3.tgz.sha256` Release 资产中公布的值为准 |
+| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4> |
+| 产物文件 | `dsh-vision-bridge-0.2.4.tgz` |
+| SHA-256 | 以 `dsh-vision-bridge-0.2.4.tgz.sha256` Release 资产中公布的值为准 |
+| npm 包 | `@liangdacheng/dsh-vision-bridge@0.2.4` |
 
 对于后续版本，请使用同样的步骤，数值以
 [最新 Release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest)
@@ -150,7 +163,7 @@ v0.2.3 版本信息：
 具备 **Node.js >= 22.19** 与 **pnpm**。
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
@@ -161,7 +174,7 @@ node .\setup.mjs
    Vision 模型 ID。这些 ID 可以在你的 DSH Models 页面查看。安装器不会替你
    猜测：DSH 目前没有可供工具查询的稳定 catalog API，因此这三个 ID 需要
    手动输入；
-3. 下载并校验 v0.2.3 Release tarball，把它安装进 profile，写入桥接配置
+3. 下载并校验 v0.2.4 Release tarball，把它安装进 profile，写入桥接配置
    （先备份旧文件），并用 `dsh --dump-config` 验证结果。
 
 安装过程中不会发起任何 Vision 请求。
@@ -169,7 +182,7 @@ node .\setup.mjs
 运行前校验安装器文件本身（推荐）：
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -209,38 +222,38 @@ npx @deepseek-ai/dsh --version
 
 #### 2. 下载 Release 产物
 
-从 [v0.2.3 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)
+从 [v0.2.4 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
 下载，或用命令下载：
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz
 ```
 
 #### 3. 校验校验和
 
-把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.3.tgz.sha256`
+把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.4.tgz.sha256`
 Release 资产）对比。如果不一致，**不要**安装 —— 删除文件并从官方 Release
 页面重新下载。
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.3.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.4.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
 ```
 
 #### 4. 把插件安装进 profile
@@ -248,13 +261,13 @@ shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
 在包含下载文件的目录中执行：
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
 ```
 
 `dsh plugin` 会在首次使用时初始化 profile，用 pnpm 安装该包，然后对
 profile 的 bundle 列表做对账：由于该包声明了 `dsh.bundle` manifest 条目，
-`dsh-vision-bridge` 会被自动加入该 profile `package.json` 中的
-`dsh.profile.bundles`。
+`@liangdacheng/dsh-vision-bridge` 会被自动加入该 profile `package.json`
+中的 `dsh.profile.bundles`。
 
 请通过检查 profile 的 `package.json` 来确认对账结果：
 
@@ -264,16 +277,36 @@ profile 的 bundle 列表做对账：由于该包声明了 `dsh.bundle` manifest
     "profile": {
       "bundles": [
         "@deepseek-ai/dsh-base",
-        "dsh-vision-bridge"
+        "@liangdacheng/dsh-vision-bridge"
       ]
     }
   }
 }
 ```
 
-`dsh-vision-bridge` 必须出现在 `dsh.profile.bundles` 中。如果你的 DSH 构建
-没有自动添加（对账行为因 DSH 构建而异），请手动把 `"dsh-vision-bridge"`
-追加到该数组并保存文件。
+`@liangdacheng/dsh-vision-bridge` 必须出现在 `dsh.profile.bundles` 中。
+如果你的 DSH 构建没有自动添加（对账行为因 DSH 构建而异），请手动把
+`"@liangdacheng/dsh-vision-bridge"` 追加到该数组并保存文件。
+
+#### 备选：从 npm 安装
+
+从 v0.2.4 起，该包也发布到官方 npm registry，包名为
+`@liangdacheng/dsh-vision-bridge`。有全局 `dsh` 时：
+
+```powershell
+dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+```
+
+没有全局 `dsh` 时：
+
+```powershell
+npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.4"
+```
+
+`dsh plugin add` 会转发给 pnpm，安装精确的已发布版本，并把
+`@liangdacheng/dsh-vision-bridge` 对账进 `dsh.profile.bundles`。切勿安装
+未带 scope 的 `dsh-vision-bridge` npm 包 —— 那是一个不同的、与本项目无关
+的项目。
 
 #### 5. 配置桥接插件（必做）
 
@@ -380,7 +413,7 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 | `--vision-provider <id>` | 提供视觉模型的 provider 路由。 |
 | `--vision-model <id>` | Vision 路由上支持图片的模型 ID。 |
 | `--provider-id <id>` | 可选的合成包装 provider ID（默认 `<upstreamProvider>-vision-bridge`）。 |
-| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.3`）。 |
+| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.4`）。 |
 | `--tarball <path>` | 从本地 Release tarball 安装（SHA-256 会对受信版本表校验）。 |
 | `--yes` | 跳过最终确认（绝不跳过校验）。 |
 | `--what-if` | 只打印计划 —— 包括将要写入的确切配置 —— 不下载、不写入任何内容。 |
@@ -400,25 +433,28 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 不在你的 `PATH` 中，所有 `dsh …` 命令都可以写成 `npx @deepseek-ai/dsh …`
 （见[1. 前置条件](#1-前置条件)）：
 
-1. **下载** v0.2.3 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)）：
+1. **下载** v0.2.4 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)）：
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
    ```
 
 2. **校验**校验和（[细节](#3-校验校验和)）：
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
    ```
 
-   与 Release 页面公布的值（`dsh-vision-bridge-0.2.3.tgz.sha256` 资产）对比。
+   与 Release 页面公布的值（`dsh-vision-bridge-0.2.4.tgz.sha256` 资产）对比。
 
 3. **安装**到你的 profile（[细节](#4-把插件安装进-profile)）：
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
    ```
+
+   （或者从 npm：
+   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4`。）
 
 4. **配置** `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中的行
    （[细节](#配置)）：
@@ -628,7 +664,7 @@ uncertainty  —— 模型无法读取或核实的内容
 | `dsh` 不是可识别的命令（`dsh: command not found`） | DSH CLI 未安装或不在你的 `PATH` 中。 | 按 DeepSeek Harness 的 README 安装 DSH，或改用 `npx @deepseek-ai/dsh …` 按需运行同一命令（例如 `npx @deepseek-ai/dsh plugin --profile <profile> add …`）。 |
 | profile 启动失败：`config "upstreamProvider"` / `"visionProvider"` / `"visionModel"` must be a non-empty string | 桥接行缺少（或不完整的）配置。 | 在 profile 的 `cordis.patch.yml` 中为 `dsh-vision-bridge` 条目补全三个必填键。 |
 | `dsh: profile "<name>" does not exist` | 该 profile 从未创建。 | 用 `dsh plugin --profile <profile> add ...` 创建，或使用你平时启动的那个 profile。 |
-| `dsh --dump-config` 输出中没有桥接行 | bundle 没有注册进该 profile。 | 检查 profile 的 `package.json` 中 `dsh.profile.bundles` 是否包含 `dsh-vision-bridge`；如果你的 DSH 构建不会自动对账，手动追加后重启。 |
+| `dsh --dump-config` 输出中没有桥接行 | bundle 没有注册进该 profile。 | 检查 profile 的 `package.json` 中 `dsh.profile.bundles` 是否包含 `@liangdacheng/dsh-vision-bridge`；如果你的 DSH 构建不会自动对账，手动追加后重启。 |
 | 模型目录中没有 `(vision bridge)` 模型 | 上游路由在发现阶段不可用，或其模型并非纯文本。 | 确认上游 provider 插件已在 profile 中启用，且要包装的模型声明为纯文本输入。等 provider 注册完成后再重启 profile。 |
 | 请求失败：vision model is not positively-confirmed image-capable | Vision 路由上的 `visionModel` 未声明图片输入。 | 把 `visionModel` 指向 `inputModalities` 包含 `image` 的模型。 |
 | 请求失败：vision output is not valid JSON (retry exhausted) | Vision 模型两次都没有返回一个完整 JSON 文档。 | 检查 Vision 模型/provider；多图恢复按设计最多 2 次尝试。 |
@@ -642,7 +678,29 @@ uncertainty  —— 模型无法读取或核实的内容
 
 ## 升级
 
-从旧版本升级：
+### 从 v0.2.3 或更早版本升级（包身份迁移）
+
+从 v0.2.4 起，npm 包身份变为 scoped（`@liangdacheng/dsh-vision-bridge`）；
+v0.2.3 及更早版本安装的是未带 scope 的包名 `dsh-vision-bridge`。升级由
+旧版本安装的 profile 时：
+
+- 引导式安装器（v0.2.4）会自动迁移：先移除旧的未带 scope 的依赖与 bundle
+  条目，再安装 scoped 包，并保留你的桥接配置。profile manifest 会先备份，
+  升级失败时自动恢复。
+- 手动迁移时，先移除旧身份，再添加新身份：
+
+  ```powershell
+  dsh plugin --profile <profile> remove dsh-vision-bridge
+  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+  ```
+
+  （也可以用下载的 v0.2.4 tarball 替代 registry 版本号。）在旧的未带 scope
+  的依赖仍然存在时**不要**直接 `add` 新包 —— 否则两个 bundle 条目会同时
+  生效。
+
+### 在 scoped 身份内升级（v0.2.4 及以后）
+
+从较旧的 v0.2.4+ 版本升级：
 
 1. 停止 DSH（在运行中的实例上按 `Ctrl+C`）。
 2. 从 [GitHub Releases](https://github.com/TwistedRiCen/dsh-vision-bridge/releases)
@@ -653,6 +711,8 @@ uncertainty  —— 模型无法读取或核实的内容
    ```powershell
    dsh plugin --profile <profile> add .\dsh-vision-bridge-<new-version>.tgz
    ```
+
+   （或者：`dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@<new-version>`。）
 
 4. 确认配置仍然匹配你的路由与模型
    （`dsh --profile <profile> --dump-config`）。
@@ -673,11 +733,11 @@ uncertainty  —— 模型无法读取或核实的内容
 用经过验证的命令把插件从 profile 中移除：
 
 ```powershell
-dsh plugin --profile <profile> remove dsh-vision-bridge
+dsh plugin --profile <profile> remove @liangdacheng/dsh-vision-bridge
 ```
 
 `dsh plugin remove` 会用 pnpm 卸载该包，并自动从 `dsh.profile.bundles` 中
-移除 `dsh-vision-bridge`。
+移除 `@liangdacheng/dsh-vision-bridge`。
 
 配置不会自动移除：请同时从 profile 的 `cordis.patch.yml` 中删除
 `dsh-vision-bridge` 条目。如果保留，启动时会记录一条无害的警告
@@ -722,7 +782,9 @@ pnpm run test:installer    # 确定性安装器测试套件（tests/setup）
 
 ## 已知限制
 
-- **分发方式：** 仅 GitHub Release tarball；项目未发布到 npm。
+- **分发方式：** GitHub Release 与 npm（`@liangdacheng/dsh-vision-bridge`，
+  自 v0.2.4 起）。v0.2.3 及更早版本仅通过 GitHub 分发。未带 scope 的 npm 包
+  `dsh-vision-bridge` 与本项目无关。
 - **DSH 兼容性：** DSH 处于开发者预览阶段。本插件只在某一个 DSH commit
   上验证过；其他版本的行为可能不同。
 - **真实 provider 范围：** 确定性测试从不调用真实 provider。真实 provider

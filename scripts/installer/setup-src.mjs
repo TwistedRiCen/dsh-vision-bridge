@@ -42,7 +42,7 @@ import { fetch as undiciFetch, EnvHttpProxyAgent } from 'undici'
 /* ------------------------------------------------------------------ */
 
 /** Installer identity. */
-export const SETUP_VERSION = '0.2.3'
+export const SETUP_VERSION = '0.2.4'
 
 /** The one DSH CLI version this installer materializes and drives. */
 export const DSH_PIN = '0.1.0-rc.6'
@@ -53,20 +53,38 @@ export const DSH_BIN_REL = 'lib/bin.js'
 /** Minimum Node.js version required by the bridge runtime contract. */
 export const NODE_MIN_VERSION = '22.19.0'
 
-/** Bridge identity. */
-export const BRIDGE_PACKAGE_NAME = 'dsh-vision-bridge'
+/**
+ * Bridge identity. Since v0.2.4 the canonical npm/Node package identity is
+ * the scoped name; v0.2.3 and earlier installed the legacy unscoped name.
+ * The cordis ROW id stays 'dsh-vision-bridge' forever so existing profile
+ * config rows keep addressing the bridge across the identity migration.
+ */
+export const BRIDGE_PACKAGE_NAME = '@liangdacheng/dsh-vision-bridge'
+export const LEGACY_PACKAGE_NAME = 'dsh-vision-bridge'
 export const BRIDGE_ROW_ID = 'dsh-vision-bridge'
 
+/** Bridge versions that were released under the legacy unscoped identity. */
+export const LEGACY_RELEASE_VERSIONS = Object.freeze(['0.2.1', '0.2.2', '0.2.3'])
+
 /** The bridge release this installer installs by default. */
-export const DEFAULT_BRIDGE_VERSION = '0.2.3'
+export const DEFAULT_BRIDGE_VERSION = '0.2.4'
 
 /**
  * Trusted release map. The SHA-256 values here are the ONLY accepted
  * identities for downloaded or locally supplied tarballs. A version that is
  * not in this map is refused for automatic download, and a local tarball is
  * refused unless its SHA-256 matches a mapped entry.
+ *
+ * The 0.2.4 entry carries `packageName`: the scoped npm identity inside the
+ * tarball. Entries without `packageName` are the legacy unscoped releases.
  */
 export const RELEASE_MAP = Object.freeze({
+  '0.2.4': Object.freeze({
+    asset: 'dsh-vision-bridge-0.2.4.tgz',
+    url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz',
+    sha256: 'D7B555371F7BCA46BD3E1DEB6437076DE31D12B6D7EE8D7932BFC1B13E8153B9',
+    packageName: '@liangdacheng/dsh-vision-bridge',
+  }),
   '0.2.3': Object.freeze({
     asset: 'dsh-vision-bridge-0.2.3.tgz',
     url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz',
@@ -852,26 +870,182 @@ export function addBundleEntry(text, packageName) {
   return { text: `${JSON.stringify(parsed, null, 2)}\n`, changed: true }
 }
 
-/** True when the profile manifest lists the bridge in dsh.profile.bundles. */
-export function hasBridgeBundle(dir) {
+/** Bundle-entry presence per identity (read-only view of the manifest). */
+export function bridgeBundleState(dir) {
+  const state = { scoped: false, legacy: false }
   try {
     const parsed = JSON.parse(readProfileManifestText(dir))
     const bundles = parsed?.dsh?.profile?.bundles
-    return Array.isArray(bundles) && bundles.includes(BRIDGE_PACKAGE_NAME)
+    if (Array.isArray(bundles)) {
+      state.scoped = bundles.includes(BRIDGE_PACKAGE_NAME)
+      state.legacy = bundles.includes(LEGACY_PACKAGE_NAME)
+    }
+  } catch {
+    // Unreadable manifest: both false; the caller fails loudly elsewhere.
+  }
+  return state
+}
+
+/** True when the profile manifest lists the bridge under either identity. */
+export function hasBridgeBundle(dir) {
+  const state = bridgeBundleState(dir)
+  return state.scoped || state.legacy
+}
+
+/** Installed bridge version per the frozen source of truth (scoped first). */
+export function installedBridgeVersion(dir) {
+  const scopedManifest = path.join(dir, 'node_modules', BRIDGE_PACKAGE_NAME, 'package.json')
+  try {
+    const parsed = JSON.parse(readFileSync(scopedManifest, 'utf8'))
+    if (parsed?.name === BRIDGE_PACKAGE_NAME && typeof parsed?.version === 'string') {
+      return parsed.version
+    }
+  } catch {
+    // Not installed under the scoped identity.
+  }
+  // The legacy fallback is positively identified: an unrelated third-party
+  // package under the unscoped name never influences plan-kind or the
+  // downgrade gate.
+  return legacyInstalledVersion(dir)
+}
+
+/**
+ * Version of the package in the profile's legacy node_modules slot when it
+ * POSITIVELY identifies as a previous dsh-vision-bridge install (unscoped
+ * name, a released legacy version, and the dsh.bundle manifest). Anything
+ * else — notably the unrelated third-party unscoped npm package — is never
+ * treated as ours. Returns null otherwise.
+ */
+export function legacyInstalledVersion(dir) {
+  const manifest = path.join(dir, 'node_modules', LEGACY_PACKAGE_NAME, 'package.json')
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))
+    if (parsed?.name === LEGACY_PACKAGE_NAME
+      && typeof parsed?.version === 'string'
+      && LEGACY_RELEASE_VERSIONS.includes(parsed.version)
+      && parsed?.dsh?.bundle?.patch !== undefined) {
+      return parsed.version
+    }
+  } catch {
+    // Absent or unreadable.
+  }
+  return null
+}
+
+/** True when a dependency spec is the installer's own dead temp-tarball path. */
+export function isDeadInstallerTarballSpec(spec) {
+  return typeof spec === 'string'
+    && spec.startsWith('file:')
+    && spec.includes('dsh-vision-bridge-setup-')
+}
+
+/**
+ * Detect any legacy (v0.2.3-era unscoped) bridge presence in a profile:
+ * dependency key, bundle entry, or positively identified node_modules
+ * package. Returns null when nothing legacy is present. Never guesses,
+ * never repairs.
+ */
+export function detectLegacyInstall(profileDir) {
+  if (!existsSync(profileManifestPath(profileDir))) return null
+  const parsed = JSON.parse(readProfileManifestText(profileDir))
+  const deps = parsed?.dependencies ?? {}
+  const bundles = parsed?.dsh?.profile?.bundles
+  const hasDep = typeof deps[LEGACY_PACKAGE_NAME] === 'string'
+  const hasBundle = Array.isArray(bundles) && bundles.includes(LEGACY_PACKAGE_NAME)
+  const nodeModulesVersion = legacyInstalledVersion(profileDir)
+  if (!hasDep && !hasBundle && nodeModulesVersion === null) return null
+  return {
+    depSpec: hasDep ? deps[LEGACY_PACKAGE_NAME] : null,
+    hasDep,
+    hasBundle,
+    nodeModulesVersion,
+  }
+}
+
+/** True when the scoped bridge dependency is the installer's own dead temp spec. */
+export function hasDeadScopedSpec(profileDir) {
+  try {
+    const parsed = JSON.parse(readProfileManifestText(profileDir))
+    return isDeadInstallerTarballSpec(parsed?.dependencies?.[BRIDGE_PACKAGE_NAME])
   } catch {
     return false
   }
 }
 
-/** Installed bridge version per the frozen source of truth. */
-export function installedBridgeVersion(dir) {
-  const manifest = path.join(dir, 'node_modules', BRIDGE_PACKAGE_NAME, 'package.json')
-  try {
-    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))
-    return typeof parsed.version === 'string' ? parsed.version : null
-  } catch {
-    return null
+/**
+ * Remove a positively identified legacy bridge identity from the profile
+ * manifest (dependency key + bundle entry) before the scoped package is
+ * installed. Also drops a dead scoped `file:` spec the installer itself may
+ * have written into a now-deleted temp dir on an earlier run.
+ *
+ * Safety boundary: the legacy dependency/bundle are only removed when they
+ * positively identify as this bridge — a `file:` spec pointing into an
+ * installer temp dir, or an installed legacy package with a released legacy
+ * version and the dsh.bundle manifest. An unidentified legacy presence makes
+ * the migration FAIL CLOSED (the unrelated third-party unscoped npm package
+ * is never removed, not even from a profile).
+ *
+ * Returns { changed, depRemoved, bundleRemoved, deadScopedRemoved }. The
+ * caller owns the manifest backup and the post-install node_modules prune.
+ */
+export function cleanupLegacyIdentity(profileDir) {
+  const parsed = JSON.parse(readProfileManifestText(profileDir))
+  const deps = parsed?.dependencies ?? {}
+  const bundles = parsed?.dsh?.profile?.bundles
+  const bundleList = Array.isArray(bundles) ? bundles : null
+  const legacy = detectLegacyInstall(profileDir)
+  const ownsBySpec = legacy !== null && isDeadInstallerTarballSpec(legacy.depSpec)
+  const ownsByInstall = legacy !== null && legacy.nodeModulesVersion !== null
+  // An unidentified legacy BUNDLE entry would duplicate the bridge identity
+  // once the scoped package lands: fail closed rather than touch it. An
+  // unidentified legacy DEPENDENCY without a bundle entry is not ours —
+  // it is left untouched (third-party safety) and cannot create a
+  // duplicate bundle.
+  if (legacy !== null && legacy.hasBundle && !ownsBySpec && !ownsByInstall) {
+    throw new Error(
+      `the profile lists the unscoped package "${LEGACY_PACKAGE_NAME}" as a bundle that the installer `
+      + 'cannot positively identify as a previous dsh-vision-bridge install; refusing to modify it. '
+      + 'Remove that bundle entry manually, then re-run the installer.',
+    )
   }
+  const result = { changed: false, depRemoved: false, bundleRemoved: false, deadScopedRemoved: false }
+  const nextDeps = { ...deps }
+  if (legacy !== null && legacy.hasDep && (ownsBySpec || ownsByInstall)) {
+    delete nextDeps[LEGACY_PACKAGE_NAME]
+    result.depRemoved = true
+  }
+  if (typeof nextDeps[BRIDGE_PACKAGE_NAME] === 'string' && isDeadInstallerTarballSpec(nextDeps[BRIDGE_PACKAGE_NAME])) {
+    delete nextDeps[BRIDGE_PACKAGE_NAME]
+    result.deadScopedRemoved = true
+  }
+  if (legacy !== null && legacy.hasBundle && bundleList !== null && (ownsBySpec || ownsByInstall)) {
+    parsed.dsh.profile.bundles = bundleList.filter((name) => name !== LEGACY_PACKAGE_NAME)
+    result.bundleRemoved = true
+  }
+  if (result.depRemoved || result.deadScopedRemoved) parsed.dependencies = nextDeps
+  result.changed = result.depRemoved || result.bundleRemoved || result.deadScopedRemoved
+  if (result.changed) {
+    writeFileAtomic(profileManifestPath(profileDir), `${JSON.stringify(parsed, null, 2)}\n`)
+    const reparsed = JSON.parse(readProfileManifestText(profileDir))
+    if (result.depRemoved && reparsed?.dependencies?.[LEGACY_PACKAGE_NAME] !== undefined) {
+      throw new Error('legacy dependency removal failed verification; the manifest was not updated correctly')
+    }
+  }
+  return result
+}
+
+/**
+ * Prune the positively identified legacy bridge package from the profile's
+ * node_modules. Identity-guarded: anything that is not positively a previous
+ * dsh-vision-bridge install is left untouched. Call only AFTER the scoped
+ * install succeeded.
+ */
+export function pruneLegacyNodeModules(profileDir) {
+  const legacyDir = path.join(profileDir, 'node_modules', LEGACY_PACKAGE_NAME)
+  if (!existsSync(legacyDir)) return false
+  if (legacyInstalledVersion(profileDir) === null) return false
+  rmSync(legacyDir, { recursive: true, force: true })
+  return true
 }
 
 /* ------------------------------------------------------------------ */
@@ -1278,8 +1452,14 @@ export async function runSetup(deps = {}) {
       }
     }
 
-    // Fast path: identical version, valid bundle, complete config, no reconfigure.
-    if (planKind === 'no-changes' && !writeConfig && profileExists && hasBridgeBundle(profileDir)) {
+    // Fast path: identical version, valid bundle, complete config, no
+    // reconfigure. A profile with ANY legacy bridge presence (duplicate
+    // bundle identities, or a legacy dependency the migration owns) is never
+    // fast-pathed — the migration must reconcile it first.
+    const fastPathBundleState = bridgeBundleState(profileDir)
+    if (planKind === 'no-changes' && !writeConfig && profileExists && hasBridgeBundle(profileDir)
+      && !(fastPathBundleState.scoped && fastPathBundleState.legacy)
+      && detectLegacyInstall(profileDir) === null) {
       log('No changes required (version, bundle list, and configuration are already in place).')
       return { exitCode: 0 }
     }
@@ -1310,6 +1490,27 @@ export async function runSetup(deps = {}) {
     }
     log(`ok: SHA-256 verified (${actualSha})`)
 
+    // 11a+. Legacy identity migration (v0.2.4 scoped targets only): before
+    // the scoped package is added, remove a positively identified legacy
+    // install from the manifest so the profile ends with exactly one bridge
+    // identity. The manifest is backed up first and restored if the
+    // subsequent install fails.
+    let migrationBackup = null
+    if (profileExists && tarballPlan.entry.packageName !== undefined) {
+      const legacy = detectLegacyInstall(profileDir)
+      if (legacy !== null || hasDeadScopedSpec(profileDir)) {
+        migrationBackup = createBackup(profileManifestPath(profileDir))
+        try {
+          const cleanup = cleanupLegacyIdentity(profileDir)
+          if (cleanup.changed) {
+            log('ok: previous bridge identity removed (legacy dependency/bundle cleaned before the scoped install)')
+          }
+        } catch (error) {
+          fail(`legacy bridge cleanup failed: ${error.message}`)
+        }
+      }
+    }
+
     // 11b. Install / upgrade the package (same version skips this step).
     if (planKind !== 'no-changes' && planKind !== 'same-version-repair') {
       log(`ok: installing ${BRIDGE_PACKAGE_NAME} ${targetVersion} into profile "${profileName}"`)
@@ -1317,6 +1518,14 @@ export async function runSetup(deps = {}) {
         dshEntry, 'plugin', '--profile', profileName, 'add', `./${controlledName}`,
       ], { cwd: tempDir, env })
       if (add.status !== 0) {
+        if (migrationBackup !== null && existsSync(migrationBackup)) {
+          try {
+            writeFileAtomic(profileManifestPath(profileDir), readFileSync(migrationBackup, 'utf8'))
+            log('note: the pre-upgrade profile manifest was restored')
+          } catch {
+            log(`note: the pre-upgrade profile manifest backup is at ${migrationBackup}`)
+          }
+        }
         fail(
           `the DSH plugin install failed (exit ${add.status === null ? 'killed' : add.status}). `
           + 'The profile was left as-is; see the DSH output above and retry, or use Manual Installation.',
@@ -1324,23 +1533,52 @@ export async function runSetup(deps = {}) {
       }
     }
 
-    // 11c. Bundle verification with JSON-only fallback.
+    // 11b+. Prune the legacy package files now that the scoped install is
+    // verified (identity-guarded; unidentified packages are never touched).
+    if (profileExists && tarballPlan.entry.packageName !== undefined && pruneLegacyNodeModules(profileDir)) {
+      log('ok: legacy bridge package files removed')
+    }
+
+    // 11c. Bundle verification with JSON-only fallback (identity-aware: the
+    // fallback adds the exact package identity of the target release).
     const profileReady = existsSync(profileManifestPath(profileDir))
+    const targetPackageName = tarballPlan.entry.packageName ?? LEGACY_PACKAGE_NAME
     if (profileReady && !hasBridgeBundle(profileDir)) {
       log('note: the DSH build did not reconcile the bundle list; applying the verified JSON fallback')
       const manifestText = readProfileManifestText(profileDir)
       createBackup(profileManifestPath(profileDir))
-      const { text, changed } = addBundleEntry(manifestText, BRIDGE_PACKAGE_NAME)
+      const { text, changed } = addBundleEntry(manifestText, targetPackageName)
       if (changed) {
         writeFileAtomic(profileManifestPath(profileDir), text)
         const reparsed = JSON.parse(readProfileManifestText(profileDir))
         const bundles = reparsed?.dsh?.profile?.bundles
-        if (!Array.isArray(bundles) || !bundles.includes(BRIDGE_PACKAGE_NAME)) {
+        if (!Array.isArray(bundles) || !bundles.includes(targetPackageName)) {
           fail('bundle fallback failed verification; the profile manifest was not updated correctly')
         }
         log('ok: bundle entry added and verified')
       } else {
         log('ok: bundle entry already present')
+      }
+    }
+
+    // 11c+. Scoped identity invariant (scoped targets only): exactly one
+    // bridge bundle (the scoped one), the scoped dependency key present, and
+    // no legacy entries left behind by the migration.
+    if (profileExists && tarballPlan.entry.packageName !== undefined) {
+      const finalState = bridgeBundleState(profileDir)
+      let finalDeps = {}
+      try {
+        finalDeps = JSON.parse(readProfileManifestText(profileDir))?.dependencies ?? {}
+      } catch {
+        // Manifest unreadable: treated as missing dependency keys.
+      }
+      if (!finalState.scoped || finalState.legacy || !(BRIDGE_PACKAGE_NAME in finalDeps)) {
+        fail(
+          'the profile was not left with exactly the scoped bridge identity '
+          + `(scoped bundle: ${finalState.scoped}, legacy bundle: ${finalState.legacy}, `
+          + `scoped dependency: ${BRIDGE_PACKAGE_NAME in finalDeps}). `
+          + 'The install did not complete consistently; re-run the installer or use Manual Installation.',
+        )
       }
     }
 

@@ -9,8 +9,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import {
-  addBundleEntry, backupPathFor, buildBridgeConfig, compareSemver, DSH_PIN,
-  formatBackupStamp, isSpaceFreeCmdSafe, matchTarballSha, parseArgs,
+  addBundleEntry, backupPathFor, BRIDGE_PACKAGE_NAME, buildBridgeConfig, compareSemver, DSH_PIN,
+  formatBackupStamp, isSpaceFreeCmdSafe, LEGACY_PACKAGE_NAME, LEGACY_RELEASE_VERSIONS,
+  matchTarballSha, parseArgs,
   pickTempRoot, PROVIDER_ID_PATTERN, PROFILE_NAME_PATTERN, RELEASE_MAP,
   resolveDshHome, resolveShimToNodeEntry, resolveTargetRelease,
   tempRootCandidates, usageText, validateProfileName, validateProviderId,
@@ -67,7 +68,7 @@ test('parseArgs rejects unknown flags, missing values, duplicates, stray args', 
 
 test('usageText names the pinned DSH spec and default version', () => {
   const text = usageText()
-  assert.ok(text.includes('0.2.3'))
+  assert.ok(text.includes('0.2.4'))
   assert.ok(text.includes('--what-if'))
   assert.ok(text.includes('--tarball'))
 })
@@ -127,21 +128,31 @@ test('resolveDshHome mirrors DSH precedence and tilde expansion', () => {
 /* release map                                                         */
 /* ------------------------------------------------------------------ */
 
-test('release map is frozen and carries the verified 0.2.3 identity; 0.2.2 stays trusted', () => {
+test('release map is frozen; 0.2.4 carries the scoped identity; legacy releases stay trusted', () => {
   assert.ok(Object.isFrozen(RELEASE_MAP))
-  const entry = RELEASE_MAP['0.2.3']
-  assert.equal(entry.asset, 'dsh-vision-bridge-0.2.3.tgz')
-  assert.equal(entry.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz')
-  assert.equal(entry.sha256, 'D6D5D2A3FFECA2FD9213DA9A34A527E19321E8DB44CD0FCFCFCC168B42FE16C1')
-  assert.match(entry.asset, /^dsh-vision-bridge-0\.2\.3\.tgz$/)
+  const entry = RELEASE_MAP['0.2.4']
+  assert.equal(entry.asset, 'dsh-vision-bridge-0.2.4.tgz')
+  assert.equal(entry.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz')
+  assert.match(entry.sha256, /^[0-9A-F]{64}$/)
+  assert.equal(entry.packageName, '@liangdacheng/dsh-vision-bridge')
   assert.ok(entry.url.endsWith(entry.asset))
-  const previous = RELEASE_MAP['0.2.2']
-  assert.equal(previous.sha256, 'D5EB402017756FC5DC54E0E6E01DFA77216DC8B81A1EF3418F01B2962181EA7F', '0.2.2 stays trusted')
+  const legacy = RELEASE_MAP['0.2.3']
+  assert.equal(legacy.asset, 'dsh-vision-bridge-0.2.3.tgz')
+  assert.equal(legacy.sha256, 'D6D5D2A3FFECA2FD9213DA9A34A527E19321E8DB44CD0FCFCFCC168B42FE16C1')
+  assert.equal(legacy.packageName, undefined, 'legacy entries carry no scoped packageName')
+  assert.equal(RELEASE_MAP['0.2.2'].sha256, 'D5EB402017756FC5DC54E0E6E01DFA77216DC8B81A1EF3418F01B2962181EA7F', '0.2.2 stays trusted')
   assert.equal(RELEASE_MAP['0.2.1'].sha256, 'A3E02C67F629C0C30BA74114B77E721C4F48EE884C83E31608E00EE71030837C', '0.2.1 stays trusted')
 })
 
+test('bridge identity constants are frozen to the scoped/legacy split', () => {
+  assert.equal(BRIDGE_PACKAGE_NAME, '@liangdacheng/dsh-vision-bridge')
+  assert.equal(LEGACY_PACKAGE_NAME, 'dsh-vision-bridge')
+  assert.deepEqual(LEGACY_RELEASE_VERSIONS, ['0.2.1', '0.2.2', '0.2.3'])
+})
+
 test('resolveTargetRelease refuses unmapped versions for download', () => {
-  assert.equal(resolveTargetRelease({}).version, '0.2.3')
+  assert.equal(resolveTargetRelease({}).version, '0.2.4')
+  assert.equal(resolveTargetRelease({ versionFlag: '0.2.4' }).source, 'download')
   assert.equal(resolveTargetRelease({ versionFlag: '0.2.3' }).source, 'download')
   assert.equal(resolveTargetRelease({ versionFlag: '0.2.2' }).source, 'download', '0.2.2 remains a mapped release')
   assert.throws(() => resolveTargetRelease({ versionFlag: '9.9.9' }), /trusted release map/)
@@ -240,6 +251,12 @@ test('addBundleEntry creates missing dsh.profile.bundles and refuses anomalies',
   assert.throws(() => addBundleEntry('{broken', 'dsh-vision-bridge'), /failed to parse/)
   assert.throws(() => addBundleEntry('[1,2]', 'dsh-vision-bridge'), /JSON object/)
   assert.throws(() => addBundleEntry(JSON.stringify({ dsh: { profile: { bundles: 'nope' } } }), 'dsh-vision-bridge'), /must be an array/)
+})
+
+test('addBundleEntry accepts the scoped identity', () => {
+  const { text, changed } = addBundleEntry(JSON.stringify({ name: 'p' }), '@liangdacheng/dsh-vision-bridge')
+  assert.equal(changed, true)
+  assert.deepEqual(JSON.parse(text).dsh.profile.bundles, ['@liangdacheng/dsh-vision-bridge'])
 })
 
 /* ------------------------------------------------------------------ */

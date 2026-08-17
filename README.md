@@ -145,17 +145,31 @@ flowchart LR
 
 ## Installation
 
-The project is distributed as a GitHub Release tarball (it is **not on npm**).
-The current stable release is
-**[v0.2.3](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)**.
+The project is distributed through two official channels:
 
-Release facts for v0.2.3:
+| Channel | Identity |
+|---|---|
+| GitHub Release | repository `dsh-vision-bridge` — release tarball + guided installer |
+| npm | official package **`@liangdacheng/dsh-vision-bridge`** (public, `registry.npmjs.org`) |
+
+> **Important:** The official npm package for this project is
+> `@liangdacheng/dsh-vision-bridge`. The unscoped npm package
+> `dsh-vision-bridge` is unrelated to this project and is not published or
+> maintained by this repository. Do not install it as this project.
+
+npm publication starts with v0.2.4; v0.2.3 and earlier were distributed only
+via GitHub Release and were never published to npm. The current stable
+release is
+**[v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)**.
+
+Release facts for v0.2.4:
 
 | | |
 |---|---|
-| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3> |
-| Artifact | `dsh-vision-bridge-0.2.3.tgz` |
-| SHA-256 | published in the `dsh-vision-bridge-0.2.3.tgz.sha256` release asset |
+| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4> |
+| Artifact | `dsh-vision-bridge-0.2.4.tgz` |
+| SHA-256 | published in the `dsh-vision-bridge-0.2.4.tgz.sha256` release asset |
+| npm package | `@liangdacheng/dsh-vision-bridge@0.2.4` |
 
 For future versions, follow the same steps with the values from the
 [latest release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest).
@@ -169,7 +183,7 @@ DSH CLI (`@deepseek-ai/dsh@0.1.0-rc.6`). You only need **Node.js >= 22.19**
 and **pnpm** on your `PATH`.
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
@@ -181,7 +195,7 @@ The wizard will:
    Models page. The installer does not guess them: DSH currently has no
    stable catalog API that tools can query, so these three IDs are entered
    manually;
-3. download and verify the v0.2.3 release tarball, install it into the
+3. download and verify the v0.2.4 release tarball, install it into the
    profile, write the bridge configuration (backing up the previous file),
    and validate the result with `dsh --dump-config`.
 
@@ -190,7 +204,7 @@ No Vision request is made during installation.
 To verify the installer file itself before running it (recommended):
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -235,39 +249,39 @@ prerequisites are unchanged: you still need Node.js and pnpm on your `PATH`.
 #### 2. Download the release
 
 Download the artifact from the
-[v0.2.3 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3)
+[v0.2.4 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
 or with a command:
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz
 ```
 
 #### 3. Verify the checksum
 
 Compare the file's SHA-256 against the value published on the release page
-(the `dsh-vision-bridge-0.2.3.tgz.sha256` release asset). If it differs, do
+(the `dsh-vision-bridge-0.2.4.tgz.sha256` release asset). If it differs, do
 **not** install the file — delete it and download again from the official
 release page.
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.3.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.4.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
 ```
 
 #### 4. Install the plugin into your profile
@@ -275,13 +289,13 @@ shasum -a 256 dsh-vision-bridge-0.2.3.tgz # macOS
 Run this from the directory that contains the downloaded file:
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
 ```
 
 `dsh plugin` initializes the profile on first use, installs the package with
 pnpm, and then reconciles the profile's bundle list: because the package
-declares a `dsh.bundle` manifest entry, `dsh-vision-bridge` is added to
-`dsh.profile.bundles` in the profile's `package.json` automatically.
+declares a `dsh.bundle` manifest entry, `@liangdacheng/dsh-vision-bridge` is
+added to `dsh.profile.bundles` in the profile's `package.json` automatically.
 
 Verify the reconciliation by checking the profile's `package.json`:
 
@@ -291,17 +305,37 @@ Verify the reconciliation by checking the profile's `package.json`:
     "profile": {
       "bundles": [
         "@deepseek-ai/dsh-base",
-        "dsh-vision-bridge"
+        "@liangdacheng/dsh-vision-bridge"
       ]
     }
   }
 }
 ```
 
-`dsh-vision-bridge` must be present in `dsh.profile.bundles`. If your DSH
-build does not add it automatically (the reconciliation behavior varies by
-DSH build), append `"dsh-vision-bridge"` to that array manually and save the
-file.
+`@liangdacheng/dsh-vision-bridge` must be present in
+`dsh.profile.bundles`. If your DSH build does not add it automatically (the
+reconciliation behavior varies by DSH build), append
+`"@liangdacheng/dsh-vision-bridge"` to that array manually and save the file.
+
+#### Alternative: install from npm
+
+From v0.2.4 the package is also published to the official npm registry as
+`@liangdacheng/dsh-vision-bridge`. With a global `dsh`:
+
+```powershell
+dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+```
+
+Without a global `dsh`:
+
+```powershell
+npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.4"
+```
+
+`dsh plugin add` forwards to pnpm, which installs the exact published
+version and reconciles `@liangdacheng/dsh-vision-bridge` into
+`dsh.profile.bundles`. Never install the unscoped `dsh-vision-bridge` npm
+package — it is a different, unrelated project.
 
 #### 5. Configure the bridge (required)
 
@@ -414,7 +448,7 @@ it does not have. The following flags are supported:
 | `--vision-provider <id>` | Provider route serving the image-capable model. |
 | `--vision-model <id>` | Image-capable model id on the vision route. |
 | `--provider-id <id>` | Optional custom wrapper provider id (defaults to `<upstreamProvider>-vision-bridge`). |
-| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.3`). |
+| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.4`). |
 | `--tarball <path>` | Install from a local release tarball (SHA-256 verified against the trusted release map). |
 | `--yes` | Skip the final confirmation (never skips verification). |
 | `--what-if` | Print the plan — including the exact configuration that would be written — without downloading or writing anything. |
@@ -438,27 +472,30 @@ Already have DSH installed and a profile? Here is the shortest verified path.
 Every `dsh …` command can also be run as `npx @deepseek-ai/dsh …` if `dsh`
 is not on your `PATH` (see [1. Prerequisites](#1-prerequisites)):
 
-1. **Download** the v0.2.3 artifact from the
-   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.3):
+1. **Download** the v0.2.4 artifact from the
+   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4):
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.3/dsh-vision-bridge-0.2.3.tgz' -OutFile 'dsh-vision-bridge-0.2.3.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
    ```
 
 2. **Verify** the checksum ([details](#3-verify-the-checksum)):
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.3.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
    ```
 
    Compare it against the value published on the release page (the
-   `dsh-vision-bridge-0.2.3.tgz.sha256` release asset).
+   `dsh-vision-bridge-0.2.4.tgz.sha256` release asset).
 
 3. **Install** into your profile ([details](#4-install-the-plugin-into-your-profile)):
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.3.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
    ```
+
+   (Or, from npm:
+   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4`.)
 
 4. **Configure** the row in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`
    ([details](#configuration)):
@@ -696,7 +733,7 @@ tolerance.
 | `dsh` is not recognized as a command (`dsh: command not found`) | The DSH CLI is not installed or not on your `PATH`. | Install DeepSeek Harness per its README, or run the same commands on demand with `npx @deepseek-ai/dsh …` (for example `npx @deepseek-ai/dsh plugin --profile <profile> add …`). |
 | Profile boot fails with `config "upstreamProvider"` / `"visionProvider"` / `"visionModel"` must be a non-empty string | The bridge row has no (or incomplete) config. | Add all three required keys to the `dsh-vision-bridge` entry in the profile's `cordis.patch.yml`. |
 | `dsh: profile "<name>" does not exist` | The profile was never created. | Create it with `dsh plugin --profile <profile> add ...`, or use the profile you normally boot. |
-| The bridge row is missing from `dsh --dump-config` output | The bundle was not registered in the profile. | Check that `dsh-vision-bridge` is in `dsh.profile.bundles` in the profile's `package.json`; append it manually if your DSH build does not reconcile automatically, then restart. |
+| The bridge row is missing from `dsh --dump-config` output | The bundle was not registered in the profile. | Check that `@liangdacheng/dsh-vision-bridge` is in `dsh.profile.bundles` in the profile's `package.json`; append it manually if your DSH build does not reconcile automatically, then restart. |
 | The `(vision bridge)` models do not appear in the model catalog | The upstream route is unavailable at discovery time, or its models are not text-only. | Make sure the upstream provider plugin is enabled in the profile and that the model you want to wrap declares text-only input. Restart the profile after providers register. |
 | Request fails: vision model is not positively-confirmed image-capable | `visionModel` on the Vision route does not declare image input. | Point `visionModel` at a model whose `inputModalities` include `image`. |
 | Request fails: vision output is not valid JSON (retry exhausted) | The Vision model twice returned output that is not one complete JSON document. | Check the Vision model/provider; multi-image recovery is bounded to 2 attempts by design. |
@@ -711,7 +748,31 @@ inside the installed package.
 
 ## Upgrading
 
-To upgrade from an older version:
+### Upgrading from v0.2.3 or earlier (package identity migration)
+
+Starting with v0.2.4 the npm package identity is scoped
+(`@liangdacheng/dsh-vision-bridge`); v0.2.3 and earlier installed the
+unscoped package name `dsh-vision-bridge`. When upgrading a profile that was
+installed by an earlier release:
+
+- The guided installer (v0.2.4) migrates automatically: it removes the old
+  unscoped dependency and bundle entry before installing the scoped package
+  and keeps your bridge configuration. A backup of the profile manifest is
+  taken and restored if the upgrade fails.
+- Manually, remove the old identity first, then add the new one:
+
+  ```powershell
+  dsh plugin --profile <profile> remove dsh-vision-bridge
+  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+  ```
+
+  (Instead of the registry spec you can add the downloaded v0.2.4 tarball.)
+  Do **not** `add` the new package while the old unscoped dependency is still
+  present — both bundle entries would then be active.
+
+### Upgrading within the scoped identity (v0.2.4 and later)
+
+To upgrade from an older v0.2.4+ version:
 
 1. Stop DSH (`Ctrl+C` on the running instance).
 2. Download the new release artifact from
@@ -723,6 +784,8 @@ To upgrade from an older version:
    ```powershell
    dsh plugin --profile <profile> add .\dsh-vision-bridge-<new-version>.tgz
    ```
+
+   (Or: `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@<new-version>`.)
 
 4. Verify the configuration still matches your routes and models
    (`dsh --profile <profile> --dump-config`).
@@ -744,11 +807,11 @@ with your configuration preserved.)
 Remove the plugin from the profile with the verified command:
 
 ```powershell
-dsh plugin --profile <profile> remove dsh-vision-bridge
+dsh plugin --profile <profile> remove @liangdacheng/dsh-vision-bridge
 ```
 
 `dsh plugin remove` uninstalls the package with pnpm and removes
-`dsh-vision-bridge` from `dsh.profile.bundles` automatically.
+`@liangdacheng/dsh-vision-bridge` from `dsh.profile.bundles` automatically.
 
 Configuration is not removed automatically: also delete the
 `dsh-vision-bridge` entry from the profile's `cordis.patch.yml`. If you leave
@@ -801,8 +864,10 @@ Runtime dependencies: **0**. The released artifact contains only `dist`,
 
 ## Limitations
 
-- **Distribution:** GitHub Release tarball only; the project is not published
-  on npm.
+- **Distribution:** GitHub Release and npm
+  (`@liangdacheng/dsh-vision-bridge`, from v0.2.4). v0.2.3 and earlier are
+  GitHub-only. The unscoped npm package `dsh-vision-bridge` is unrelated to
+  this project.
 - **DSH compatibility:** DSH is a developer preview. The plugin is tested
   against one DSH commit; other versions may behave differently.
 - **Real-provider scope:** deterministic tests never call real providers.

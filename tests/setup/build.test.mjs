@@ -65,9 +65,13 @@ test('I40: release map is well-formed and names deterministic assets', () => {
     assert.ok(entry.url.endsWith(entry.asset))
     assert.match(entry.sha256, /^[0-9A-F]{64}$/)
   }
+  assert.equal(RELEASE_MAP['0.2.4'].packageName, '@liangdacheng/dsh-vision-bridge', '0.2.4 is the scoped release')
+  for (const version of ['0.2.1', '0.2.2', '0.2.3']) {
+    assert.equal(RELEASE_MAP[version].packageName, undefined, `${version} stays a legacy unscoped entry`)
+  }
 })
 
 test('frozen constants are internally consistent', () => {
-  assert.match(SETUP_VERSION, /^0\.2\.3$/)
+  assert.match(SETUP_VERSION, /^0\.2\.4$/)
   assert.equal(DSH_PIN, '0.1.0-rc.6')
 })

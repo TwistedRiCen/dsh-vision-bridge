@@ -1,6 +1,6 @@
 {
-  "name": "dsh-vision-bridge",
-  "version": "0.2.3",
+  "name": "@liangdacheng/dsh-vision-bridge",
+  "version": "0.2.4",
   "description": "DSH-native vision bridge for text-only models with native image attachments, multi-image evidence batching, and session-scoped validated Evidence caching.",
   "type": "module",
   "license": "MIT",
@@ -20,6 +20,14 @@
       "patch": "./cordis.patch.yml"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TwistedRiCen/dsh-vision-bridge.git"
+  },
+  "homepage": "https://github.com/TwistedRiCen/dsh-vision-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/TwistedRiCen/dsh-vision-bridge/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:installer": "node scripts/installer/build.mjs",
@@ -38,6 +46,7 @@
     "node": ">=22.19"
   },
   "publishConfig": {
-    "access": "restricted"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

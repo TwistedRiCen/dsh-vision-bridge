@@ -27,8 +27,11 @@ const FIXTURE_BIN = path.join(here, 'fixtures', 'bin')
 /* helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-function makeRelease(version) {
-  const content = `fake tarball v${version}\n`
+function makeRelease(version, { scoped = false } = {}) {
+  const packageName = scoped ? '@liangdacheng/dsh-vision-bridge' : undefined
+  const content = packageName === undefined
+    ? `fake tarball v${version}\n`
+    : `fake tarball v${version}\nidentity: ${packageName}\n`
   const sha256 = createHash('sha256').update(content).digest('hex').toUpperCase()
   const asset = `dsh-vision-bridge-${version}.tgz`
   return {
@@ -37,13 +40,19 @@ function makeRelease(version) {
     sha256,
     asset,
     url: `https://example.invalid/releases/download/v${version}/${asset}`,
+    packageName,
   }
 }
 
 function releaseMapFor(releases) {
   return Object.freeze(Object.fromEntries(releases.map((release) => [
     release.version,
-    Object.freeze({ asset: release.asset, url: release.url, sha256: release.sha256 }),
+    Object.freeze({
+      asset: release.asset,
+      url: release.url,
+      sha256: release.sha256,
+      ...(release.packageName === undefined ? {} : { packageName: release.packageName }),
+    }),
   ])))
 }
 
@@ -416,7 +425,7 @@ test('providerId recursion guards mirror the bridge (I25)', async (t) => {
 
 test('download failure: clean abort, no profile writes (I18)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.3')
+  const release = makeRelease('0.2.4', { scoped: true })
   const { lines, log } = makeLogs()
   const fetchImpl = async () => { throw new Error('connection refused (stub)') }
   const result = await runSetup({ argv: [...baseArgs('work'), '--yes'], env, log, releaseMap: releaseMapFor([release]), fetchImpl })
@@ -428,7 +437,7 @@ test('download failure: clean abort, no profile writes (I18)', async (t) => {
 
 test('checksum mismatch: artifact deleted, nothing installed (I19)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.3')
+  const release = makeRelease('0.2.4', { scoped: true })
   // Stub fetch returns bytes whose SHA differs from the map entry.
   const fetchImpl = async () => {
     return new Response('tampered bytes', { status: 200 })
@@ -673,10 +682,194 @@ test('anomalous existing bridge row fails loudly with zero writes', async (t) =>
   assert.equal(readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8'), before, 'file untouched')
 })
 
+/* ------------------------------------------------------------------ */
+/* v0.2.4 scoped identity: fresh install, legacy migration, guards     */
+/* ------------------------------------------------------------------ */
+
+function seedLegacyProfile(env, name, { deadSpec = true, thirdParty = false } = {}) {
+  const profileDir = path.join(env.DSH_HOME, 'profiles', name)
+  const legacyDir = path.join(profileDir, 'node_modules', 'dsh-vision-bridge')
+  mkdirSync(legacyDir, { recursive: true })
+  writeFileSync(path.join(legacyDir, 'package.json'), JSON.stringify(thirdParty
+    ? { name: 'dsh-vision-bridge', version: '0.1.0' }
+    : { name: 'dsh-vision-bridge', version: '0.2.3', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+  const depSpec = deadSpec
+    ? 'file:C:/nowhere/dsh-vision-bridge-setup-deadbeef/dsh-vision-bridge-0.2.3.tgz'
+    : 'file:C:/tmp/dsh-vision-bridge-0.2.3.tgz'
+  writeFileSync(path.join(profileDir, 'package.json'), JSON.stringify({
+    name: `dsh-profile-${name}`,
+    private: true,
+    dependencies: { 'dsh-vision-bridge': thirdParty ? '^0.1.0' : depSpec },
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-vision-bridge'] } },
+  }, null, 2))
+  writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+    '- id: dsh-vision-bridge',
+    '  config:',
+    '    upstreamProvider: old-a',
+    '    visionProvider: old-b',
+    '    visionModel: old-m',
+    '',
+  ].join('\n'))
+  return profileDir
+}
+
+test('fresh scoped install leaves exactly one scoped identity (T2)', async (t) => {
+  const { root, env } = withEnv(t)
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: [...baseArgs('work'), '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const manifest = JSON.parse(readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
+  assert.ok('@liangdacheng/dsh-vision-bridge' in manifest.dependencies, 'scoped dependency key present')
+  assert.equal(manifest.dependencies['dsh-vision-bridge'], undefined, 'no legacy dependency key')
+  assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@liangdacheng/dsh-vision-bridge'])
+  assert.ok(existsSync(path.join(profileDir, 'node_modules', '@liangdacheng', 'dsh-vision-bridge', 'package.json')))
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge', 'package.json')), false)
+})
+
+test('same-version scoped rerun is a zero-write no-op (T9)', async (t) => {
+  const { root, env } = withEnv(t)
+  const release = makeRelease('0.2.4', { scoped: true })
+  const tarball = writeTarball(root, release)
+  const { lines, log } = makeLogs()
+  const first = await runSetup({ argv: [...baseArgs('work'), '--tarball', tarball, '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(first.exitCode, 0, lines.join('\n'))
+  const before = snapshotTree(path.join(env.DSH_HOME, 'profiles'))
+  const second = await runSetup({ argv: [...baseArgs('work'), '--tarball', tarball, '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(second.exitCode, 0, lines.join('\n'))
+  assert.ok(lines.join('\n').includes('No changes required'))
+  assert.deepEqual(snapshotTree(path.join(env.DSH_HOME, 'profiles')), before, 'second run must not write anything')
+})
+
+test('legacy dead-file upgrade migrates to the scoped identity (T5/T6/T7)', async (t) => {
+  const { root, env } = withEnv(t)
+  seedLegacyProfile(env, 'work')
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const manifest = JSON.parse(readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
+  assert.equal(manifest.dependencies['dsh-vision-bridge'], undefined, 'legacy dependency removed')
+  assert.ok('@liangdacheng/dsh-vision-bridge' in manifest.dependencies, 'scoped dependency present')
+  assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@liangdacheng/dsh-vision-bridge'], 'exactly one bridge bundle')
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge')), false, 'legacy package files pruned')
+  assert.ok(existsSync(path.join(profileDir, 'node_modules', '@liangdacheng', 'dsh-vision-bridge', 'package.json')))
+  const patch = readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: old-a'), 'bridge config preserved')
+  assert.ok(patch.includes('visionProvider: old-b'))
+  assert.ok(patch.includes('visionModel: old-m'))
+  assert.ok(lines.join('\n').includes('composed configuration verified'), lines.join('\n'))
+  assert.ok(lines.join('\n').includes('legacy dependency/bundle cleaned'), 'migration reported')
+})
+
+test('legacy healthy upgrade migrates the non-dead dependency too (T5b)', async (t) => {
+  const { root, env } = withEnv(t)
+  seedLegacyProfile(env, 'work', { deadSpec: false })
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const manifest = JSON.parse(readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
+  assert.equal(manifest.dependencies['dsh-vision-bridge'], undefined)
+  assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@liangdacheng/dsh-vision-bridge'])
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge')), false)
+})
+
+test('migration failure restores the pre-upgrade manifest and leaves no half state (T8)', async (t) => {
+  const { root, env } = withEnv(t)
+  env.FAKE_DSH_ADD_FAIL = '1'
+  seedLegacyProfile(env, 'work')
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const manifestBefore = readFileSync(path.join(profileDir, 'package.json'), 'utf8')
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 1)
+  assert.ok(lines.join('\n').includes('DSH plugin install failed'))
+  assert.ok(lines.join('\n').includes('pre-upgrade profile manifest was restored'))
+  assert.equal(readFileSync(path.join(profileDir, 'package.json'), 'utf8'), manifestBefore, 'manifest byte-identical to the pre-upgrade state')
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge', 'package.json')), true, 'legacy package files untouched on failure')
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', '@liangdacheng')), false, 'no scoped package after failure')
+})
+
+test('unowned unscoped dependency fails closed and is never modified (A16)', async (t) => {
+  const { root, env } = withEnv(t)
+  seedLegacyProfile(env, 'work', { thirdParty: true })
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const manifestBefore = readFileSync(path.join(profileDir, 'package.json'), 'utf8')
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 1)
+  assert.ok(lines.join('\n').includes('cannot positively identify'), lines.join('\n'))
+  assert.equal(readFileSync(path.join(profileDir, 'package.json'), 'utf8'), manifestBefore)
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge', 'package.json')), true)
+})
+
+test('unowned unscoped dependency without a bundle entry is left untouched and install proceeds (A16b)', async (t) => {
+  const { root, env } = withEnv(t)
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  mkdirSync(profileDir, { recursive: true })
+  writeFileSync(path.join(profileDir, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-work',
+    private: true,
+    dependencies: { 'dsh-vision-bridge': '^0.1.0' },
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }, null, 2))
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: [...baseArgs('work'), '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const manifest = JSON.parse(readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
+  assert.equal(manifest.dependencies['dsh-vision-bridge'], '^0.1.0', 'foreign dependency untouched')
+  assert.ok('@liangdacheng/dsh-vision-bridge' in manifest.dependencies, 'scoped bridge installed alongside')
+  assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@liangdacheng/dsh-vision-bridge'])
+})
+
+test('duplicate identities are repaired to a single scoped identity (T6b)', async (t) => {
+  const { root, env } = withEnv(t)
+  seedLegacyProfile(env, 'work', { deadSpec: false })
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  const scopedDir = path.join(profileDir, 'node_modules', '@liangdacheng', 'dsh-vision-bridge')
+  mkdirSync(scopedDir, { recursive: true })
+  writeFileSync(path.join(scopedDir, 'package.json'), JSON.stringify({ name: '@liangdacheng/dsh-vision-bridge', version: '0.2.4', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+  const manifestPath = path.join(profileDir, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  manifest.dependencies['@liangdacheng/dsh-vision-bridge'] = 'file:C:/tmp/dsh-vision-bridge-0.2.4.tgz'
+  manifest.dsh.profile.bundles.push('@liangdacheng/dsh-vision-bridge')
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const after = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  assert.equal(after.dependencies['dsh-vision-bridge'], undefined, 'legacy dependency removed')
+  assert.ok('@liangdacheng/dsh-vision-bridge' in after.dependencies)
+  assert.deepEqual(after.dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@liangdacheng/dsh-vision-bridge'])
+  assert.equal(existsSync(path.join(profileDir, 'node_modules', 'dsh-vision-bridge')), false)
+})
+
+test('--what-if with a legacy profile performs zero writes', async (t) => {
+  const { root, env } = withEnv(t)
+  seedLegacyProfile(env, 'work')
+  const beforeHome = snapshotTree(env.DSH_HOME)
+  const beforeTemp = snapshotTree(path.join(root, 'plain-temp'))
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--what-if'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  assert.deepEqual(snapshotTree(env.DSH_HOME), beforeHome, 'DSH_HOME unchanged')
+  assert.deepEqual(snapshotTree(path.join(root, 'plain-temp')), beforeTemp, 'temp root unchanged')
+})
+
 test('non-interactive missing args produce a usage error', async (t) => {
   const { root, env } = withEnv(t)
   const { lines, log } = makeLogs()
-  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.3')]) })
+  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.4', { scoped: true })]) })
   assert.equal(result.exitCode, 1)
   assert.ok(lines.join('\n').includes('--upstream-provider, --vision-provider, and --vision-model are required together'))
 })

@@ -15,8 +15,10 @@
  *   FAKE_DSH_DUMP_FAIL=1       dump-config exits 1 (I22)
  *
  * Tarballs are plain marker files whose content embeds `v<version>`; the
- * "install" step writes node_modules/dsh-vision-bridge/package.json with
- * that version, mirroring the real plugin install outcome.
+ * scoped-release markers additionally carry an `identity:` line (mirroring
+ * the tarball package.json name being authoritative for the dependency key).
+ * The "install" step writes node_modules/<identity>/package.json with that
+ * version, mirroring the real plugin install outcome.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -29,6 +31,9 @@ const LOG = process.env.FAKE_DSH_LOG
 const NO_RECONCILE = process.env.FAKE_DSH_NO_RECONCILE === '1'
 const ADD_FAIL = process.env.FAKE_DSH_ADD_FAIL === '1'
 const DUMP_FAIL = process.env.FAKE_DSH_DUMP_FAIL === '1'
+/** The two package identities the bridge has used (scoped since v0.2.4). */
+const BRIDGE_IDENTITIES = ['@liangdacheng/dsh-vision-bridge', 'dsh-vision-bridge']
+const LEGACY = 'dsh-vision-bridge'
 
 function logEvent(extra) {
   if (LOG === undefined) return
@@ -73,14 +78,21 @@ function writeManifest(dir, parsed) {
 function reconcile(dir) {
   if (NO_RECONCILE) return
   const parsed = readManifest(dir)
-  const bundles = parsed?.dsh?.profile?.bundles ?? []
-  const installed = existsSync(path.join(dir, 'node_modules', 'dsh-vision-bridge', 'package.json'))
-  if (installed && !bundles.includes('dsh-vision-bridge')) {
-    parsed.dsh.profile.bundles = [...bundles, 'dsh-vision-bridge']
-    writeManifest(dir, parsed)
+  const bundles = [...(parsed?.dsh?.profile?.bundles ?? [])]
+  let changed = false
+  for (const identity of BRIDGE_IDENTITIES) {
+    const installed = existsSync(path.join(dir, 'node_modules', identity, 'package.json'))
+    if (installed && !bundles.includes(identity)) {
+      bundles.push(identity)
+      changed = true
+    }
+    if (!installed && bundles.includes(identity)) {
+      bundles.splice(bundles.indexOf(identity), 1)
+      changed = true
+    }
   }
-  if (!installed && bundles.includes('dsh-vision-bridge')) {
-    parsed.dsh.profile.bundles = bundles.filter((name) => name !== 'dsh-vision-bridge')
+  if (changed) {
+    parsed.dsh.profile.bundles = bundles
     writeManifest(dir, parsed)
   }
 }
@@ -114,22 +126,35 @@ if (argv[0] === 'plugin') {
       console.error(`[ENOENT] ENOENT: no such file or directory, open '${tarball}'`)
       process.exit(1)
     }
-    const version = /v(\d+\.\d+\.\d+)/.exec(readFileSync(tarball, 'utf8'))?.[1] ?? null
+    const marker = readFileSync(tarball, 'utf8')
+    const version = /v(\d+\.\d+\.\d+)/.exec(marker)?.[1] ?? null
     if (version === null) {
       console.error('fake dsh: no version marker in tarball')
       process.exit(1)
     }
-    mkdirSync(path.join(dir, 'node_modules', 'dsh-vision-bridge'), { recursive: true })
-    writeFileSync(path.join(dir, 'node_modules', 'dsh-vision-bridge', 'package.json'), `${JSON.stringify({ name: 'dsh-vision-bridge', version })}\n`)
+    // The tarball's own manifest name is authoritative for the dependency
+    // key, exactly like a real pnpm tarball install.
+    const identity = /^identity: (\S+)$/m.exec(marker)?.[1] ?? LEGACY
+    mkdirSync(path.join(dir, 'node_modules', identity), { recursive: true })
+    writeFileSync(path.join(dir, 'node_modules', identity, 'package.json'),
+      `${JSON.stringify({ name: identity, version, dsh: { bundle: { patch: './cordis.patch.yml' } } })}\n`)
     const parsed = readManifest(dir)
-    parsed.dependencies = { ...(parsed.dependencies ?? {}), 'dsh-vision-bridge': `file:${tarball.replace(/\\/g, '/')}` }
+    parsed.dependencies = { ...(parsed.dependencies ?? {}), [identity]: `file:${tarball.replace(/\\/g, '/')}` }
     writeManifest(dir, parsed)
+    // Faithful pnpm simulation: a real install reconciles node_modules to the
+    // manifest, pruning bridge packages that are no longer dependencies.
+    for (const other of BRIDGE_IDENTITIES) {
+      if (other !== identity && parsed.dependencies[other] === undefined) {
+        rmSync(path.join(dir, 'node_modules', other), { recursive: true, force: true })
+      }
+    }
   } else if (cmd === 'remove') {
+    const pkg = argv[4] ?? LEGACY
     const parsed = readManifest(dir)
     const dependencies = { ...(parsed.dependencies ?? {}) }
-    delete dependencies['dsh-vision-bridge']
+    delete dependencies[pkg]
     parsed.dependencies = dependencies
-    rmSync(path.join(dir, 'node_modules', 'dsh-vision-bridge'), { recursive: true, force: true })
+    rmSync(path.join(dir, 'node_modules', pkg), { recursive: true, force: true })
     writeManifest(dir, parsed)
   }
   reconcile(dir)

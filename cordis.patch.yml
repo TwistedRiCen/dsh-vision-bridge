@@ -1,7 +1,9 @@
 # dsh bundle layer: mount the dsh-vision-bridge wrapper plugin via the package
 # root export. The plugin refuses to run without config (upstreamProvider,
 # visionProvider, visionModel), so a profile must supply a config override for
-# this row (see README.md).
+# this row (see README.md). The row `name` is the module specifier (scoped npm
+# package identity since v0.2.4); the row `id` stays stable so existing profile
+# config rows keep addressing it.
 - insert:
     - id: dsh-vision-bridge
-      name: 'dsh-vision-bridge'
+      name: '@liangdacheng/dsh-vision-bridge'
