@@ -16,7 +16,7 @@
 >
 > - npm：**`@liangdacheng/dsh-vision-bridge`**
 > - GitHub Releases：**`TwistedRiCen/dsh-vision-bridge`** —— 最新稳定版本
->   [v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+>   [v0.2.5](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)
 >
 > 也可通过 [DSH Community Plugins](https://github.com/topics/dsh-plugin)
 > GitHub 主题（`dsh-plugin`）发现。
@@ -92,6 +92,7 @@
 | 有界多图重试 | 多图输出契约恢复**每个工作单元最多 2 次 Vision 尝试**。 |
 | 确定性的多图重试策略 | 多图 Vision 尝试使用 `temperature: 0`；单图调用不受温度强制约束。 |
 | 会话级 Evidence 缓存 | 已通过校验的 Evidence 按会话缓存在内存中，相同图片可跳过重复的 Vision 调用。 |
+| Vision Auto-Discovery | 只配置 `upstreamProvider` 时，桥接插件自动发现 DSH 中唯一明确声明图片输入的模型，并固定为 Vision target。 |
 | 零运行时依赖 | 发布包没有运行时依赖，也不自行保存任何凭据。 |
 
 ## 工作原理
@@ -129,8 +130,9 @@ flowchart LR
 - **PATH 中的 pnpm** —— `dsh plugin` 命令通过转发给 pnpm 来管理 profile 插件。
 - **一个纯文本推理路由**（*upstream*）—— 要包装的模型必须明确声明文本输入、
   且未声明图片输入。
-- **一个支持图片的 Vision 路由** —— 明确声明图片输入的模型，其凭据配置在
-  DSH 的凭据层中。桥接插件自身不保存凭据。
+- **一个支持图片的 Vision 路由** —— 仅当你显式配置 `visionProvider`/
+  `visionModel` 时才需要。没有显式配置时，桥接插件会自动发现明确声明图片
+  输入的模型（凭据仍然位于 DSH 的凭据层；桥接插件自身不保存凭据）。
 - **平台。** 在 Windows 上开发并验证。插件本身是平台无关的 JavaScript，
   但对未测试过的操作系统不做任何承诺。
 
@@ -149,16 +151,16 @@ flowchart LR
 
 npm 发布从 v0.2.4 开始；v0.2.3 及更早版本仅通过 GitHub Release 分发，从未
 发布到 npm。当前稳定版本是
-**[v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)**。
+**[v0.2.5](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)**。
 
-v0.2.4 版本信息：
+v0.2.5 版本信息：
 
 | | |
 |---|---|
-| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4> |
-| 产物文件 | `dsh-vision-bridge-0.2.4.tgz` |
-| SHA-256 | 以 `dsh-vision-bridge-0.2.4.tgz.sha256` Release 资产中公布的值为准 |
-| npm 包 | `@liangdacheng/dsh-vision-bridge@0.2.4` |
+| Release 页面 | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5> |
+| 产物文件 | `dsh-vision-bridge-0.2.5.tgz` |
+| SHA-256 | 以 `dsh-vision-bridge-0.2.5.tgz.sha256` Release 资产中公布的值为准 |
+| npm 包 | `@liangdacheng/dsh-vision-bridge@0.2.5` |
 
 对于后续版本，请使用同样的步骤，数值以
 [最新 Release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest)
@@ -172,26 +174,30 @@ v0.2.4 版本信息：
 具备 **Node.js >= 22.19** 与 **pnpm**。
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
 向导会依次：
 
 1. 列出你的 DSH profiles（或新建一个）；
-2. 询问三个 ID —— 上游（纯文本）provider 路由、Vision provider 路由、以及
-   Vision 模型 ID。这些 ID 可以在你的 DSH Models 页面查看。安装器不会替你
-   猜测：DSH 目前没有可供工具查询的稳定 catalog API，因此这三个 ID 需要
-   手动输入；
-3. 下载并校验 v0.2.4 Release tarball，把它安装进 profile，写入桥接配置
+2. 发现你的上游（纯文本）provider 路由 —— 当 DSH 的 `settings.yaml` 只暴露
+   一个纯文本候选时自动选中；有多个候选时从编号列表中选择（或直接传
+   `--upstream-provider <id>`）。安装器写入最小的仅上游（Vision
+   Auto-Discovery）配置，绝不猜测路由或模型 ID；
+3. 下载并校验 v0.2.5 Release tarball，把它安装进 profile，写入桥接配置
    （先备份旧文件），并用 `dsh --dump-config` 验证结果。
+
+Vision Auto-Discovery 在第一次图片请求时运行。若要显式固定 Vision 路由，
+请在 profile 的 `cordis.patch.yml` 中同时设置 `visionProvider` 与
+`visionModel`（见[配置](#配置)）。
 
 安装过程中不会发起任何 Vision 请求。
 
 运行前校验安装器文件本身（推荐）：
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -231,38 +237,38 @@ npx @deepseek-ai/dsh --version
 
 #### 2. 下载 Release 产物
 
-从 [v0.2.4 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+从 [v0.2.5 Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)
 下载，或用命令下载：
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz' -OutFile 'dsh-vision-bridge-0.2.5.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz
 ```
 
 #### 3. 校验校验和
 
-把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.4.tgz.sha256`
+把文件的 SHA-256 与 Release 页面公布的值（`dsh-vision-bridge-0.2.5.tgz.sha256`
 Release 资产）对比。如果不一致，**不要**安装 —— 删除文件并从官方 Release
 页面重新下载。
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.5.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.4.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.5.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.5.tgz # macOS
 ```
 
 #### 4. 把插件安装进 profile
@@ -270,7 +276,7 @@ shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
 在包含下载文件的目录中执行：
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.5.tgz
 ```
 
 `dsh plugin` 会在首次使用时初始化 profile，用 pnpm 安装该包，然后对
@@ -303,13 +309,13 @@ profile 的 bundle 列表做对账：由于该包声明了 `dsh.bundle` manifest
 `@liangdacheng/dsh-vision-bridge`。有全局 `dsh` 时：
 
 ```powershell
-dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5
 ```
 
 没有全局 `dsh` 时：
 
 ```powershell
-npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.4"
+npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.5"
 ```
 
 `dsh plugin add` 会转发给 pnpm，安装精确的已发布版本，并把
@@ -319,10 +325,20 @@ npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdache
 
 #### 5. 配置桥接插件（必做）
 
-桥接插件**没有配置就拒绝运行**：必须提供 `upstreamProvider`、
-`visionProvider` 和 `visionModel`。请编辑 profile 的 `cordis.patch.yml`
-来提供它们 —— 完整的配置契约与最小示例见[配置](#配置)。在这一步完成之前，
-启动 profile 会大声失败，错误信息会指出缺失的配置键。
+桥接插件需要一个纯文本上游路由，其余都可以自动发现。最小配置只有
+一个键 —— 请编辑 profile 的 `cordis.patch.yml`（完整契约见
+[配置](#配置)）：
+
+```yaml
+- id: dsh-vision-bridge
+  config:
+    upstreamProvider: <text-provider>   # 你的纯文本推理路由
+```
+
+仅此而已。在第一次真正包含图片的请求到来时，桥接插件会自动发现 DSH 中
+明确声明支持图片输入的模型，并在本插件生命周期内把它固定为 Vision
+target。希望显式控制的用户仍然可以设置 `visionProvider` 和
+`visionModel` —— 两种模式都见[配置](#配置)。
 
 #### 6. 启动或重启 DSH
 
@@ -347,8 +363,9 @@ dsh --profile <profile>
    dsh --profile <profile> --dump-config
    ```
 
-   你应当能看到 `id: dsh-vision-bridge` 的一行，携带你的
-   `upstreamProvider`、`visionProvider` 和 `visionModel` 值。
+   你应当能看到 `id: dsh-vision-bridge` 的一行，携带至少你的
+   `upstreamProvider` 值（显式配置了 `visionProvider`/`visionModel` 时还会
+   显示这两个键）。
 
 2. 启动 profile 并打开你的 DSH 界面。模型目录中现在会多出一个以
    `<upstreamProvider>-vision-bridge` 命名的合成 provider，其模型名称为
@@ -367,17 +384,36 @@ dsh --profile <profile>
 loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 `id: dsh-vision-bridge` 的条目：
 
-### 最小配置
+### 最小配置（Vision Auto-Discovery）
+
+只要求上游路由：
 
 ```yaml
 - id: dsh-vision-bridge
   config:
     upstreamProvider: <text-provider>   # 你的纯文本推理路由
-    visionProvider: <vision-provider>   # 提供图片模型的 DSH 路由
-    visionModel: <vision-model>         # 该路由上支持图片的模型 id
 ```
 
-### 带注释的配置
+当 `visionProvider` 与 `visionModel` 同时省略时，桥接插件进入
+**Vision 自动发现（Vision Auto-Discovery）**：在第一次真正包含图片的
+请求到来时，它会向 DSH 查询当前 provider 目录，只保留 metadata 中明确
+声明图片输入（`inputModalities` 包含 `image`）的模型，再通过 DSH 的
+exact-model metadata 二次确认能力，然后：
+
+- **恰好一个**这样的模型 → 它会被固定（pin）为本插件生命周期的 Vision
+  target（profile 重启或配置重载后会重新发现）；
+- **没有** → 图片请求失败关闭（fail closed），并给出引导（在 DSH 中
+  配置一个支持图片的模型，或显式设置 `visionProvider` + `visionModel`）；
+- **多个** → 图片请求失败关闭，并列出全部候选，提示你显式配置
+  `visionProvider` + `visionModel`。
+
+发现是惰性的：纯文本请求永远不会触发它。发现**严格基于能力 metadata** ——
+绝不使用模型名、Provider 名或外部知识猜测图片支持，只有 DSH 的明确声明
+才算数；也绝不发送探测请求去测试能力。
+
+### 显式配置（高级覆盖）
+
+要自己固定某个 Vision 路由，请同时配置两个键：
 
 ```yaml
 - id: dsh-vision-bridge
@@ -388,14 +424,19 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
     # providerId: my-bridge             # 可选：合成 provider 的 id
 ```
 
+显式配置永远优先于 Auto-Discovery。`visionProvider` 与 `visionModel`
+要么**同时配置**，要么**同时省略** —— 只配置其中一个会在启动时快速报错。
+
 ### 配置键
 
 | 键 | 必填 | 含义 |
 |---|---|---|
 | `upstreamProvider` | 是 | 要包装的 DSH provider 路由。其模型必须明确为纯文本（声明 `text` 输入且未声明 `image` 输入）。 |
-| `visionProvider` | 是 | 提供图片视觉模型的 DSH provider 路由。 |
-| `visionModel` | 是 | Vision 路由上支持图片的模型 id。 |
-| `providerId` | 否 | 合成包装器的 provider id。默认 `<upstreamProvider>-vision-bridge`。它必须同时不同于 `upstreamProvider` 与 `visionProvider`（否则只会包装到自身）。 |
+| `visionProvider` | 否\* | 提供图片视觉模型的 DSH provider 路由。必须与 `visionModel` 一起配置；两者都省略时启用 Vision Auto-Discovery。 |
+| `visionModel` | 否\* | Vision 路由上支持图片的模型 id。必须与 `visionProvider` 一起配置；两者都省略时启用 Vision Auto-Discovery。 |
+| `providerId` | 否 | 合成包装器的 provider id。默认 `<upstreamProvider>-vision-bridge`。它必须不同于 `upstreamProvider`（配置了 `visionProvider` 时也必须不同于它）。 |
+
+\* 要么两个都配置，要么两个都省略。
 
 注意事项：
 
@@ -408,8 +449,8 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
   秘密存储。
 - **Evidence 缓存不可配置。** 其作用域是固定的（会话级、内存内 —— 见
   [缓存行为](#缓存行为)）。
-- 如果桥接插件已启用但配置缺失或不完整，profile 启动会失败，错误信息会指出
-  缺失的键。
+- 如果桥接插件已启用但缺少 `upstreamProvider`，或只配置了
+  `visionProvider`/`visionModel` 之一，profile 启动会失败并指出问题。
 
 ## 安装器高级选项
 
@@ -422,7 +463,7 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 | `--vision-provider <id>` | 提供视觉模型的 provider 路由。 |
 | `--vision-model <id>` | Vision 路由上支持图片的模型 ID。 |
 | `--provider-id <id>` | 可选的合成包装 provider ID（默认 `<upstreamProvider>-vision-bridge`）。 |
-| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.4`）。 |
+| `--version <release>` | 要安装的桥接版本（必须是受信版本；默认 `0.2.5`）。 |
 | `--tarball <path>` | 从本地 Release tarball 安装（SHA-256 会对受信版本表校验）。 |
 | `--yes` | 跳过最终确认（绝不跳过校验）。 |
 | `--what-if` | 只打印计划 —— 包括将要写入的确切配置 —— 不下载、不写入任何内容。 |
@@ -442,28 +483,28 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
 不在你的 `PATH` 中，所有 `dsh …` 命令都可以写成 `npx @deepseek-ai/dsh …`
 （见[1. 前置条件](#1-前置条件)）：
 
-1. **下载** v0.2.4 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)）：
+1. **下载** v0.2.5 产物（[Release 页面](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)）：
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz' -OutFile 'dsh-vision-bridge-0.2.5.tgz'
    ```
 
 2. **校验**校验和（[细节](#3-校验校验和)）：
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.5.tgz -Algorithm SHA256).Hash
    ```
 
-   与 Release 页面公布的值（`dsh-vision-bridge-0.2.4.tgz.sha256` 资产）对比。
+   与 Release 页面公布的值（`dsh-vision-bridge-0.2.5.tgz.sha256` 资产）对比。
 
 3. **安装**到你的 profile（[细节](#4-把插件安装进-profile)）：
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.5.tgz
    ```
 
    （或者从 npm：
-   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4`。）
+   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5`。）
 
 4. **配置** `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中的行
    （[细节](#配置)）：
@@ -472,9 +513,11 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
    - id: dsh-vision-bridge
      config:
        upstreamProvider: <text-provider>
-       visionProvider: <vision-provider>
-       visionModel: <vision-model>
    ```
+
+   （桥接插件会在第一次图片请求时自动发现 Vision target。要固定某个
+   Vision 路由，请额外配置 `visionProvider` 和 `visionModel` —— 见
+   [配置](#配置)。）
 
 5. **启动**你的 profile（[细节](#6-启动或重启-dsh)）：
 
@@ -493,8 +536,9 @@ loader patch 条目组成的 YAML 数组。在其中添加（或扩展）一个
    如果请求失败，见[故障排查](#故障排查)。
 
 占位符说明：`<profile>` —— 你平时使用的 DSH profile；`<text-provider>` ——
-要包装的纯文本模型所在路由；`<vision-provider>` / `<vision-model>` ——
-你的 DSH 安装可用的图片模型所在路由与模型 id。
+要包装的纯文本模型所在路由。`<vision-provider>` / `<vision-model>` ——
+仅显式（非自动）配置时才需要：你的 DSH 安装可用的图片模型所在路由与模型
+id。
 
 ## 使用示例
 
@@ -671,7 +715,10 @@ uncertainty  —— 模型无法读取或核实的内容
 | 症状 | 可能原因 | 检查方法 |
 |---|---|---|
 | `dsh` 不是可识别的命令（`dsh: command not found`） | DSH CLI 未安装或不在你的 `PATH` 中。 | 按 DeepSeek Harness 的 README 安装 DSH，或改用 `npx @deepseek-ai/dsh …` 按需运行同一命令（例如 `npx @deepseek-ai/dsh plugin --profile <profile> add …`）。 |
-| profile 启动失败：`config "upstreamProvider"` / `"visionProvider"` / `"visionModel"` must be a non-empty string | 桥接行缺少（或不完整的）配置。 | 在 profile 的 `cordis.patch.yml` 中为 `dsh-vision-bridge` 条目补全三个必填键。 |
+| profile 启动失败：`config "upstreamProvider"` must be a non-empty string | 桥接行缺少 `upstreamProvider`。 | 在 profile 的 `cordis.patch.yml` 中为 `dsh-vision-bridge` 条目添加 `upstreamProvider`。 |
+| profile 启动失败：`config "visionProvider" and "visionModel" must be configured together` | 只配置了两个 Vision 键之一。 | 同时配置 `visionProvider` 与 `visionModel`，或两者都省略以启用 Vision Auto-Discovery。 |
+| 请求失败：vision auto-discovery found no image-capable model | 已启用 Auto 模式，但 DSH 中没有模型明确声明图片输入。 | 在 DSH 中配置一个支持图片的模型（其 metadata 的 `inputModalities` 必须包含 `image`），或显式设置 `visionProvider` + `visionModel`。 |
+| 请求失败：vision auto-discovery found multiple image-capable models | 已启用 Auto 模式，且 DSH 中有多个模型明确声明图片输入。 | 显式设置 `visionProvider` + `visionModel`，从列出的候选中选择一个。 |
 | `dsh: profile "<name>" does not exist` | 该 profile 从未创建。 | 用 `dsh plugin --profile <profile> add ...` 创建，或使用你平时启动的那个 profile。 |
 | `dsh --dump-config` 输出中没有桥接行 | bundle 没有注册进该 profile。 | 检查 profile 的 `package.json` 中 `dsh.profile.bundles` 是否包含 `@liangdacheng/dsh-vision-bridge`；如果你的 DSH 构建不会自动对账，手动追加后重启。 |
 | 模型目录中没有 `(vision bridge)` 模型 | 上游路由在发现阶段不可用，或其模型并非纯文本。 | 确认上游 provider 插件已在 profile 中启用，且要包装的模型声明为纯文本输入。等 provider 注册完成后再重启 profile。 |
@@ -700,10 +747,10 @@ v0.2.3 及更早版本安装的是未带 scope 的包名 `dsh-vision-bridge`。�
 
   ```powershell
   dsh plugin --profile <profile> remove dsh-vision-bridge
-  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5
   ```
 
-  （也可以用下载的 v0.2.4 tarball 替代 registry 版本号。）在旧的未带 scope
+  （也可以用下载的 v0.2.5 tarball 替代 registry 版本号。）在旧的未带 scope
   的依赖仍然存在时**不要**直接 `add` 新包 —— 否则两个 bundle 条目会同时
   生效。
 
@@ -801,13 +848,19 @@ pnpm run test:installer    # 确定性安装器测试套件（tests/setup）
   数量不做任何承诺。
 - **包装规则：** 只能包装明确为纯文本的模型；Vision 路由必须明确声明图片
   输入。
+- **Vision Auto-Discovery：** 发现发生在第一次图片请求时，并在插件生命周期
+  内固定 target。当 DSH 声明零个或多个图片能力模型时失败关闭（多个时会列出
+  全部候选）；绝不根据模型/Provider 名称猜测能力，也绝不主动探测 provider。
+  安装器（v0.2.5）会自动写入最小的仅上游配置；要改用 Auto-Discovery，请在
+  profile 配置中省略 `visionProvider`/`visionModel`。
 - **重试预算：** 多图恢复最多 2 次尝试；provider 与传输错误从不重试。
 - **缓存：** 仅内存内、会话级；无持久化，无 single-flight（并发的相同未命中
   可能重复 Vision 调用）。
 - **Evidence 契约：** 按设计不包含边界框与数值置信度。
-- **安装器：** provider/model ID 需要手动输入 —— DSH 目前没有可供工具查询的
-  稳定 boot-free catalog API。安装器只在 Windows 上验证过；对未测试过的操作
-  系统不做承诺。
+- **安装器：** 上游候选从 DSH 的 `settings.yaml` 读取（单候选自动选择、多候选
+  交互式选择，或通过 `--upstream-provider` 显式指定）；Vision 路由/模型 ID
+  仍需手动提供，因为 DSH 目前没有可供工具查询的稳定 boot-free catalog API。
+  安装器只在 Windows 上验证过；对未测试过的操作系统不做承诺。
 
 ## 参与贡献
 

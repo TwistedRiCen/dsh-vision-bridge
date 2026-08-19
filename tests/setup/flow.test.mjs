@@ -425,7 +425,7 @@ test('providerId recursion guards mirror the bridge (I25)', async (t) => {
 
 test('download failure: clean abort, no profile writes (I18)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.4', { scoped: true })
+  const release = makeRelease('0.2.5', { scoped: true })
   const { lines, log } = makeLogs()
   const fetchImpl = async () => { throw new Error('connection refused (stub)') }
   const result = await runSetup({ argv: [...baseArgs('work'), '--yes'], env, log, releaseMap: releaseMapFor([release]), fetchImpl })
@@ -437,7 +437,7 @@ test('download failure: clean abort, no profile writes (I18)', async (t) => {
 
 test('checksum mismatch: artifact deleted, nothing installed (I19)', async (t) => {
   const { root, env } = withEnv(t)
-  const release = makeRelease('0.2.4', { scoped: true })
+  const release = makeRelease('0.2.5', { scoped: true })
   // Stub fetch returns bytes whose SHA differs from the map entry.
   const fetchImpl = async () => {
     return new Response('tampered bytes', { status: 200 })
@@ -646,14 +646,25 @@ test('profile name whitelist enforced end to end (I24)', async (t) => {
   assert.ok(lines.join('\n').includes('intentionally restricts profile names'))
 })
 
-test('interactive profile menu selects by number and collects ids (I3)', async (t) => {
+test('interactive profile menu selects by number and auto-discovers the single upstream (I3)', async (t) => {
   const { root, env } = withEnv(t)
   for (const name of ['alpha', 'beta']) {
     mkdirSync(path.join(env.DSH_HOME, 'profiles', name), { recursive: true })
     writeFileSync(path.join(env.DSH_HOME, 'profiles', name, 'package.json'), JSON.stringify({ name: `dsh-profile-${name}`, dsh: { profile: { bundles: [] } } }))
   }
+  // Single text-only candidate -> auto-selected after the profile menu.
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), [
+    'llm-pi-ai:',
+    '  providers:',
+    '    provider-a:',
+    '      displayName: Provider A',
+    '      models:',
+    '        - id: text-model-1',
+    '          input: [ text ]',
+    '',
+  ].join('\n'))
   const release = makeRelease('0.2.1')
-  const answers = ['2', 'provider-a', 'provider-b', 'vision-model-a']
+  const answers = ['2']
   const asked = []
   const prompt = async (question) => {
     asked.push(question)
@@ -665,6 +676,11 @@ test('interactive profile menu selects by number and collects ids (I3)', async (
   assert.ok(asked.some((question) => question.includes('Select profile')), 'profile menu asked')
   assert.ok(existsSync(path.join(env.DSH_HOME, 'profiles', 'beta', 'node_modules', 'dsh-vision-bridge', 'package.json')), 'selection [2] = beta installed')
   assert.equal(existsSync(path.join(env.DSH_HOME, 'profiles', 'alpha', 'node_modules', 'dsh-vision-bridge', 'package.json')), false, 'alpha untouched')
+  // Auto config (only upstreamProvider) was written from the discovered candidate.
+  const patch = readFileSync(path.join(env.DSH_HOME, 'profiles', 'beta', 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: provider-a'))
+  assert.ok(!patch.includes('visionProvider'), 'no vision keys in Auto config')
+  assert.ok(lines.join('\n').includes('Detected upstream: Provider A'))
 })
 
 test('anomalous existing bridge row fails loudly with zero writes', async (t) => {
@@ -866,12 +882,16 @@ test('--what-if with a legacy profile performs zero writes', async (t) => {
   assert.deepEqual(snapshotTree(path.join(root, 'plain-temp')), beforeTemp, 'temp root unchanged')
 })
 
-test('non-interactive missing args produce a usage error', async (t) => {
+test('non-interactive missing args with no candidates fail closed with guidance', async (t) => {
   const { root, env } = withEnv(t)
+  // No settings.yaml in the disposable DSH_HOME -> 0 candidates -> fail closed.
   const { lines, log } = makeLogs()
-  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.4', { scoped: true })]) })
+  const result = await runSetup({ argv: ['--profile', 'work', '--yes'], env, log, releaseMap: releaseMapFor([makeRelease('0.2.5', { scoped: true })]) })
   assert.equal(result.exitCode, 1)
-  assert.ok(lines.join('\n').includes('--upstream-provider, --vision-provider, and --vision-model are required together'))
+  const message = lines.join('\n')
+  assert.ok(message.includes('no text-only upstream provider could be detected'), message)
+  assert.ok(message.includes('--upstream-provider'), message)
+  assert.equal(existsSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml')), false, 'no config written on fail closed')
 })
 
 test('help prints without touching anything', async (t) => {
@@ -880,4 +900,226 @@ test('help prints without touching anything', async (t) => {
   const result = await runSetup({ argv: ['--help'], env, log })
   assert.equal(result.exitCode, 0)
   assert.ok(lines.join('\n').includes('Usage:'))
+})
+
+/* ------------------------------------------------------------------ */
+/* V0.3.1 — guided upstream auto-selection                             */
+/* ------------------------------------------------------------------ */
+
+const SINGLE_TEXT_ONLY_SETTINGS = [
+  'llm-pi-ai:',
+  '  providers:',
+  '    provider-a:',
+  '      displayName: Provider A',
+  '      models:',
+  '        - id: text-model-1',
+  '          input: [ text ]',
+  '',
+].join('\n')
+
+const TWO_TEXT_ONLY_SETTINGS = [
+  'llm-pi-ai:',
+  '  providers:',
+  '    provider-a:',
+  '      displayName: Provider A',
+  '      models:',
+  '        - id: text-model-1',
+  '          input: [ text ]',
+  '    provider-b:',
+  '      displayName: Provider B',
+  '      models:',
+  '        - id: text-model-2',
+  '          input: [ text ]',
+  '',
+].join('\n')
+
+test('single candidate: auto-selected, Auto config written (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), SINGLE_TEXT_ONLY_SETTINGS)
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const patch = readFileSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: provider-a'), patch)
+  assert.ok(!patch.includes('visionProvider'), 'Auto config has no vision keys')
+  assert.ok(lines.join('\n').includes('Detected upstream: Provider A'))
+  assert.ok(lines.join('\n').includes('Vision target: Auto-discovery at runtime'))
+})
+
+test('multiple candidates interactive: numbered list selects the chosen provider (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), TWO_TEXT_ONLY_SETTINGS)
+  const release = makeRelease('0.2.1')
+  const answers = ['2']
+  const asked = []
+  const prompt = async (question) => {
+    asked.push(question)
+    return answers.shift() ?? ''
+  }
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]), prompt })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  assert.ok(asked.some((question) => question.includes('Select upstream provider')), 'selection prompt asked')
+  const patch = readFileSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: provider-b'), patch)
+  assert.ok(lines.join('\n').includes('[1] Provider A (provider: provider-a)'))
+  assert.ok(lines.join('\n').includes('[2] Provider B (provider: provider-b)'))
+})
+
+test('multiple candidates non-interactive --yes fails closed (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), TWO_TEXT_ONLY_SETTINGS)
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 1)
+  const message = lines.join('\n')
+  assert.ok(message.includes('multiple text-only upstream providers were detected'), message)
+  assert.ok(message.includes('--upstream-provider'), message)
+  assert.equal(existsSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml')), false)
+})
+
+test('explicit --upstream-provider writes Auto config without discovery (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  // Multiple candidates present: explicit arg must win without any selection.
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), TWO_TEXT_ONLY_SETTINGS)
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--upstream-provider', 'provider-x', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const patch = readFileSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: provider-x'), patch)
+  assert.ok(!patch.includes('visionProvider'), 'Auto config has no vision keys')
+  assert.ok(!lines.join('\n').includes('Detected upstream'), 'no discovery run when explicit arg given')
+})
+
+test('explicit --upstream-provider plus one vision key fails both-or-neither (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--upstream-provider', 'p', '--vision-provider', 'q', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 1)
+  const message = lines.join('\n')
+  assert.ok(message.includes('visionProvider and visionModel must be configured together'), message)
+  assert.ok(message.includes('together'), message)
+})
+
+test('existing Auto config rerun keeps it with zero writes (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), SINGLE_TEXT_ONLY_SETTINGS)
+  // Scoped release so the same-version fast path is reachable (a legacy
+  // identity install always runs the migration check instead of fast-pathing).
+  const release = makeRelease('0.2.4', { scoped: true })
+  const { lines, log } = makeLogs()
+  const first = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(first.exitCode, 0, lines.join('\n'))
+  const before = snapshotTree(path.join(env.DSH_HOME, 'profiles'))
+  const second = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(second.exitCode, 0, lines.join('\n'))
+  assert.ok(lines.join('\n').includes('No changes required'), lines.join('\n'))
+  assert.deepEqual(snapshotTree(path.join(env.DSH_HOME, 'profiles')), before, 'rerun must not write')
+})
+
+test('existing Manual config rerun with keep preserves it (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  const release = makeRelease('0.2.1')
+  const { log } = makeLogs()
+  const first = await runSetup({ argv: [...baseArgs('work'), '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(first.exitCode, 0)
+  // Re-run without args: keep (interactive) → config preserved unchanged.
+  const before = snapshotTree(path.join(env.DSH_HOME, 'profiles'))
+  const prompt = async () => 'keep'
+  const second = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]), prompt })
+  assert.equal(second.exitCode, 0)
+  const patch = readFileSync(path.join(env.DSH_HOME, 'profiles', 'work', 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('visionProvider: provider-b'), 'Manual config preserved')
+  assert.deepEqual(snapshotTree(path.join(env.DSH_HOME, 'profiles')), before)
+})
+
+test('existing partial config repair interactively becomes Auto (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), SINGLE_TEXT_ONLY_SETTINGS)
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  mkdirSync(profileDir, { recursive: true })
+  writeFileSync(path.join(profileDir, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-work',
+    dependencies: {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  // Partial: only visionProvider, no visionModel -> invalid.
+  writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+    '- id: dsh-vision-bridge',
+    '  config:',
+    '    upstreamProvider: old-a',
+    '    visionProvider: old-b',
+    '',
+  ].join('\n'))
+  const release = makeRelease('0.2.1')
+  const answers = ['y']
+  const { lines, log } = makeLogs()
+  const prompt = async (question) => {
+    if (question.includes('incomplete')) return answers.shift() ?? ''
+    return null
+  }
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]), prompt })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const patch = readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('upstreamProvider: provider-a'), patch)
+  assert.ok(!patch.includes('visionProvider'), 'repaired to Auto config')
+})
+
+test('--what-if with a single candidate performs zero writes and previews Auto config (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), SINGLE_TEXT_ONLY_SETTINGS)
+  const beforeHome = snapshotTree(env.DSH_HOME)
+  const beforeTemp = snapshotTree(path.join(root, 'plain-temp'))
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--what-if'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  assert.deepEqual(snapshotTree(env.DSH_HOME), beforeHome, 'DSH_HOME unchanged')
+  assert.deepEqual(snapshotTree(path.join(root, 'plain-temp')), beforeTemp, 'temp root unchanged')
+  const out = lines.join('\n')
+  assert.ok(out.includes('Detected upstream: Provider A'))
+  assert.ok(out.includes('upstreamProvider: provider-a'), 'YAML preview present')
+  assert.ok(out.includes('--what-if: nothing was downloaded'))
+})
+
+test('--what-if with multiple candidates non-interactive fails closed with zero writes (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), TWO_TEXT_ONLY_SETTINGS)
+  const beforeHome = snapshotTree(env.DSH_HOME)
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--what-if'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 1)
+  assert.ok(lines.join('\n').includes('multiple text-only upstream providers were detected'))
+  assert.deepEqual(snapshotTree(env.DSH_HOME), beforeHome, 'DSH_HOME unchanged')
+})
+
+test('unrelated YAML rows are preserved across an Auto-config install (V0.3.1)', async (t) => {
+  const { root, env } = withEnv(t)
+  writeFileSync(path.join(env.DSH_HOME, 'settings.yaml'), SINGLE_TEXT_ONLY_SETTINGS)
+  const profileDir = path.join(env.DSH_HOME, 'profiles', 'work')
+  mkdirSync(profileDir, { recursive: true })
+  writeFileSync(path.join(profileDir, 'package.json'), JSON.stringify({
+    name: 'dsh-profile-work',
+    dependencies: {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }))
+  writeFileSync(path.join(profileDir, 'cordis.patch.yml'), [
+    '# user comment A',
+    '- id: user-row',
+    '  config: { keep: true }',
+    '',
+  ].join('\n'))
+  const release = makeRelease('0.2.1')
+  const { lines, log } = makeLogs()
+  const result = await runSetup({ argv: ['--profile', 'work', '--tarball', writeTarball(root, release), '--yes'], env, log, releaseMap: releaseMapFor([release]) })
+  assert.equal(result.exitCode, 0, lines.join('\n'))
+  const patch = readFileSync(path.join(profileDir, 'cordis.patch.yml'), 'utf8')
+  assert.ok(patch.includes('# user comment A'))
+  assert.ok(patch.includes('config: { keep: true }'))
+  assert.ok(patch.includes('upstreamProvider: provider-a'))
 })

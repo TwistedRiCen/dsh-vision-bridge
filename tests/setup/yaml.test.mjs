@@ -134,6 +134,37 @@ test('previewConfigYaml renders the exact row shape', () => {
   assert.equal(readBridgeRow(preview).status, 'present')
 })
 
+test('Auto config (single key) renders and round-trips through the YAML machinery (V0.3.1)', () => {
+  const autoConfig = { upstreamProvider: 'provider-a' }
+  const preview = previewConfigYaml(autoConfig)
+  assert.ok(preview.includes('- id: dsh-vision-bridge'))
+  assert.ok(preview.includes('upstreamProvider: provider-a'))
+  assert.ok(!preview.includes('visionProvider'), 'Auto config carries no vision keys')
+  const state = readBridgeRow(preview)
+  assert.equal(state.status, 'present')
+  assert.deepEqual(state.config, autoConfig)
+
+  // mutateBridgeRow: append a new Auto row and round-trip it.
+  const { text, action } = mutateBridgeRow('[]\n', autoConfig)
+  assert.equal(action, 'add')
+  assert.deepEqual(readBridgeRow(text).config, autoConfig)
+  verifySerializedPatch(text)
+
+  // Update an existing row to Auto (replaces the Manual keys entirely).
+  const manualText = [
+    '- id: dsh-vision-bridge',
+    '  config:',
+    '    upstreamProvider: old-a',
+    '    visionProvider: old-b',
+    '    visionModel: old-m',
+    '',
+  ].join('\n')
+  const { text: updated } = mutateBridgeRow(manualText, autoConfig)
+  assert.ok(updated.includes('upstreamProvider: provider-a'))
+  assert.ok(!updated.includes('visionProvider'), 'Manual keys removed by Auto update')
+  assert.deepEqual(readBridgeRow(updated).config, autoConfig)
+})
+
 /* ------------------------------------------------------------------ */
 /* atomic write                                                        */
 /* ------------------------------------------------------------------ */

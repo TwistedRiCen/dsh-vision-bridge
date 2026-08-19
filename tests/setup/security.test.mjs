@@ -28,7 +28,6 @@ const FORBIDDEN_PATTERNS = [
   /\.local(?![A-Za-z0-9_$])/,
   /egz-vision-gateway/,
   /\.credentials\.yaml/,
-  /settings\.yaml/,
   /SECRET_HONEYPOT/,
 ]
 

@@ -1,7 +1,11 @@
 node_modules/
 dist/
+dist-installer/
 *.tsbuildinfo
 *.tgz
+*.tgz.sha256
+setup.mjs
+install-artifacts/
 tests/fixtures/runtime/
+tests/fixtures/overlay-v021.patch.yml
 HANDOFF.md
-dist-installer/

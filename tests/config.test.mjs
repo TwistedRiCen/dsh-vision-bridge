@@ -56,3 +56,34 @@ test('upstreamProvider === visionProvider is ALLOWED (same route, different mode
   assert.equal(c.visionProvider, 'dual-route')
   assert.equal(c.providerId, 'dual-route-vision-bridge')
 })
+
+test('partial config: visionProvider without visionModel throws', () => {
+  assert.throws(
+    () => validateConfig({ upstreamProvider: 'u', visionProvider: 'v' }),
+    (error) => /visionProvider/.test(error.message) && /visionModel/.test(error.message) && /together/.test(error.message),
+  )
+})
+
+test('partial config: visionModel without visionProvider throws', () => {
+  assert.throws(
+    () => validateConfig({ upstreamProvider: 'u', visionModel: 'm' }),
+    (error) => /visionProvider/.test(error.message) && /visionModel/.test(error.message) && /together/.test(error.message),
+  )
+})
+
+test('auto mode: neither vision key -> visionProvider/visionModel undefined', () => {
+  const c = validateConfig({ upstreamProvider: 'u' })
+  assert.deepEqual(c, {
+    upstreamProvider: 'u',
+    visionProvider: undefined,
+    visionModel: undefined,
+    providerId: 'u-vision-bridge',
+  })
+})
+
+test('auto mode recursion guard: providerId === upstreamProvider still rejected', () => {
+  assert.throws(
+    () => validateConfig({ upstreamProvider: 'u', providerId: 'u' }),
+    /must not equal upstreamProvider/,
+  )
+})

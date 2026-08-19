@@ -321,14 +321,15 @@ test('R11/R12 successful second attempt -> only validated attempt2 Evidence inse
   assert.ok(wireOf(calls, 1).at(-1).text.includes('SECOND-OK'), 'HIT serves the canonical attempt-2 Evidence')
 })
 
-test('R13 policy key: versions 1/2/3/4 pairwise distinct; [A,B] != [B,A] preserved', () => {
-  assert.equal(EVIDENCE_POLICY_VERSION, 4, 'v0.2.3 candidate anti-merge policy version is 4')
+test('R13 policy key: versions 1/2/3/4/5 pairwise distinct; [A,B] != [B,A] preserved', () => {
+  assert.equal(EVIDENCE_POLICY_VERSION, 5, 'v0.2.5 candidate single-image U+200B tolerance policy version is 5')
   const base = { sessionId: 's1', visionProvider: 'vp', visionModel: 'vm', orderedAttachmentIds: ['a', 'b'] }
   const official = buildEvidenceCacheKey(base)
-  assert.equal(official, JSON.stringify([4, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 4')
+  assert.equal(official, JSON.stringify([5, 's1', 'vp', 'vm', ['a', 'b']]), 'key embeds policy version 5')
   assert.notEqual(official, JSON.stringify([1, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.0 policy-1 keys are distinct')
   assert.notEqual(official, JSON.stringify([2, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.1 policy-2 keys are distinct')
   assert.notEqual(official, JSON.stringify([3, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.2 policy-3 keys are distinct')
+  assert.notEqual(official, JSON.stringify([4, 's1', 'vp', 'vm', ['a', 'b']]), 'v0.2.3/v0.2.4 policy-4 keys are distinct')
   assert.notEqual(
     buildEvidenceCacheKey(base),
     buildEvidenceCacheKey({ ...base, orderedAttachmentIds: ['b', 'a'] }),

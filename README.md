@@ -20,7 +20,7 @@ text-only reasoning model as clearly labeled, untrusted observed data.
 >
 > - npm: **`@liangdacheng/dsh-vision-bridge`**
 > - GitHub Releases: **`TwistedRiCen/dsh-vision-bridge`** — latest stable
->   [v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+>   [v0.2.5](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)
 >
 > Also discoverable under the
 > [DSH Community Plugins](https://github.com/topics/dsh-plugin) GitHub topic
@@ -103,6 +103,7 @@ gain:
 | Bounded multi-image retry | Multi-image output-contract recovery is bounded to **at most 2 Vision attempts per work unit**. |
 | Deterministic multi-image retry policy | Multi-image Vision attempts use `temperature: 0`. Single-image calls are not forced to a temperature. |
 | Session-scoped Evidence cache | Completed, validated Evidence is cached in memory per session to skip repeated Vision calls for the same images. |
+| Vision Auto-Discovery | With only `upstreamProvider` configured, the bridge finds the unique DSH model that positively declares image input and pins it as the Vision target. |
 | Zero runtime dependencies | The released package has no runtime dependencies and stores no credentials of its own. |
 
 ## How it works
@@ -146,9 +147,11 @@ flowchart LR
   by forwarding to pnpm.
 - **A text-only reasoning route** (the *upstream*) — the model you want to
   wrap must positively declare text input and not declare image input.
-- **An image-capable Vision route** — a model that positively declares image
-  input, plus its credentials configured in DSH's credentials layer. The
-  bridge stores no credentials of its own.
+- **An image-capable Vision route** — only needed when you configure
+  `visionProvider`/`visionModel` explicitly. Without explicit configuration
+  the bridge auto-discovers a model that positively declares image input (its
+  credentials still live in DSH's credentials layer; the bridge stores no
+  credentials of its own).
 - **Platform.** Developed and verified on Windows. The plugin itself is
   platform-independent JavaScript, but no claims are made about untested
   operating systems.
@@ -170,16 +173,16 @@ The project is distributed through two official channels:
 npm publication starts with v0.2.4; v0.2.3 and earlier were distributed only
 via GitHub Release and were never published to npm. The current stable
 release is
-**[v0.2.4](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)**.
+**[v0.2.5](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)**.
 
-Release facts for v0.2.4:
+Release facts for v0.2.5:
 
 | | |
 |---|---|
-| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4> |
-| Artifact | `dsh-vision-bridge-0.2.4.tgz` |
-| SHA-256 | published in the `dsh-vision-bridge-0.2.4.tgz.sha256` release asset |
-| npm package | `@liangdacheng/dsh-vision-bridge@0.2.4` |
+| Release page | <https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5> |
+| Artifact | `dsh-vision-bridge-0.2.5.tgz` |
+| SHA-256 | published in the `dsh-vision-bridge-0.2.5.tgz.sha256` release asset |
+| npm package | `@liangdacheng/dsh-vision-bridge@0.2.5` |
 
 For future versions, follow the same steps with the values from the
 [latest release](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/latest).
@@ -193,28 +196,33 @@ DSH CLI (`@deepseek-ai/dsh@0.1.0-rc.6`). You only need **Node.js >= 22.19**
 and **pnpm** on your `PATH`.
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs' -OutFile setup.mjs
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/setup.mjs' -OutFile setup.mjs
 node .\setup.mjs
 ```
 
 The wizard will:
 
 1. list your DSH profiles (or create a new one);
-2. ask for three IDs — the upstream (text-only) provider route, the vision
-   provider route, and the vision model id. These are visible on your DSH
-   Models page. The installer does not guess them: DSH currently has no
-   stable catalog API that tools can query, so these three IDs are entered
-   manually;
-3. download and verify the v0.2.4 release tarball, install it into the
+2. discover your upstream (text-only) provider route — when DSH's
+   `settings.yaml` exposes exactly one text-only candidate it is selected
+   automatically; with several candidates you pick from a numbered list (or
+   pass `--upstream-provider <id>`). The installer writes the minimal
+   upstream-only (Vision Auto-Discovery) configuration and never guesses
+   route or model ids;
+3. download and verify the v0.2.5 release tarball, install it into the
    profile, write the bridge configuration (backing up the previous file),
    and validate the result with `dsh --dump-config`.
+
+Vision Auto-Discovery runs at the first image request. To pin an explicit
+Vision route instead, set `visionProvider` + `visionModel` together in the
+profile's `cordis.patch.yml` (see [Configuration](#configuration)).
 
 No Vision request is made during installation.
 
 To verify the installer file itself before running it (recommended):
 
 ```powershell
-Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/setup.mjs.sha256' -OutFile setup.mjs.sha256
+Invoke-WebRequest 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/setup.mjs.sha256' -OutFile setup.mjs.sha256
 (Get-FileHash .\setup.mjs -Algorithm SHA256).Hash
 Get-Content .\setup.mjs.sha256
 ```
@@ -259,39 +267,39 @@ prerequisites are unchanged: you still need Node.js and pnpm on your `PATH`.
 #### 2. Download the release
 
 Download the artifact from the
-[v0.2.4 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4)
+[v0.2.5 release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5)
 or with a command:
 
 ##### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
+Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz' -OutFile 'dsh-vision-bridge-0.2.5.tgz'
 ```
 
 ##### macOS / Linux
 
 ```bash
-curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz
+curl -LO https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz
 ```
 
 #### 3. Verify the checksum
 
 Compare the file's SHA-256 against the value published on the release page
-(the `dsh-vision-bridge-0.2.4.tgz.sha256` release asset). If it differs, do
+(the `dsh-vision-bridge-0.2.5.tgz.sha256` release asset). If it differs, do
 **not** install the file — delete it and download again from the official
 release page.
 
 ##### Windows PowerShell
 
 ```powershell
-(Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
+(Get-FileHash .\dsh-vision-bridge-0.2.5.tgz -Algorithm SHA256).Hash
 ```
 
 ##### macOS / Linux
 
 ```bash
-sha256sum dsh-vision-bridge-0.2.4.tgz     # Linux
-shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
+sha256sum dsh-vision-bridge-0.2.5.tgz     # Linux
+shasum -a 256 dsh-vision-bridge-0.2.5.tgz # macOS
 ```
 
 #### 4. Install the plugin into your profile
@@ -299,7 +307,7 @@ shasum -a 256 dsh-vision-bridge-0.2.4.tgz # macOS
 Run this from the directory that contains the downloaded file:
 
 ```powershell
-dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
+dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.5.tgz
 ```
 
 `dsh plugin` initializes the profile on first use, installs the package with
@@ -333,13 +341,13 @@ From v0.2.4 the package is also published to the official npm registry as
 `@liangdacheng/dsh-vision-bridge`. With a global `dsh`:
 
 ```powershell
-dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5
 ```
 
 Without a global `dsh`:
 
 ```powershell
-npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.4"
+npx -y "@deepseek-ai/dsh@0.1.0-rc.6" plugin --profile <profile> add "@liangdacheng/dsh-vision-bridge@0.2.5"
 ```
 
 `dsh plugin add` forwards to pnpm, which installs the exact published
@@ -349,11 +357,22 @@ package — it is a different, unrelated project.
 
 #### 5. Configure the bridge (required)
 
-The bridge **refuses to run without configuration**: it requires
-`upstreamProvider`, `visionProvider`, and `visionModel`. Supply them by
-editing the profile's `cordis.patch.yml` — see [Configuration](#configuration)
-for the full contract and a minimal example. Until this step is done, booting
-the profile fails loudly with a message naming the missing key.
+The bridge needs a text-only upstream route; everything else can be
+auto-discovered. The minimal configuration is a single key — supply it by
+editing the profile's `cordis.patch.yml` (see [Configuration](#configuration)
+for the full contract):
+
+```yaml
+- id: dsh-vision-bridge
+  config:
+    upstreamProvider: <text-provider>   # your text-only reasoning route
+```
+
+That is all. On the first image request the bridge automatically discovers
+the DSH model that positively declares image input and pins it as the Vision
+target for this plugin lifetime. Users who prefer explicit control can still
+set `visionProvider` and `visionModel` — see [Configuration](#configuration)
+for both modes.
 
 #### 6. Start or restart DSH
 
@@ -379,8 +398,9 @@ itself a first signal that the plugin is active.
    dsh --profile <profile> --dump-config
    ```
 
-   You should see a row with `id: dsh-vision-bridge` carrying your
-   `upstreamProvider`, `visionProvider`, and `visionModel` values.
+   You should see a row with `id: dsh-vision-bridge` carrying at least your
+   `upstreamProvider` value (plus `visionProvider`/`visionModel` when you
+   configured them explicitly).
 
 2. Boot the profile and open your DSH interface. The model catalog now
    contains a synthetic provider named after
@@ -400,17 +420,39 @@ The file to edit is `$DSH_HOME/profiles/<profile>/cordis.patch.yml` — a YAML
 array of loader patch entries. Add (or extend) an entry with
 `id: dsh-vision-bridge`:
 
-### Minimal configuration
+### Minimal configuration (Vision Auto-Discovery)
+
+Only the upstream route is required:
 
 ```yaml
 - id: dsh-vision-bridge
   config:
     upstreamProvider: <text-provider>   # your text-only reasoning route
-    visionProvider: <vision-provider>   # route serving an image-capable model
-    visionModel: <vision-model>         # image-capable model id on that route
 ```
 
-### Annotated configuration
+When `visionProvider` and `visionModel` are both omitted, the bridge enters
+**Vision Auto-Discovery**: on the first request that actually contains an
+image, it asks DSH for the current provider catalog, keeps only models whose
+metadata positively declares image input (`inputModalities` contains
+`image`), re-confirms the capability through DSH's exact-model metadata, and
+then:
+
+- **exactly one** such model → it is pinned as the Vision target for this
+  plugin lifetime (profile restart or config reload re-discovers);
+- **none** → the image request fails closed with guidance (configure an
+  image-capable model in DSH, or set `visionProvider` + `visionModel`);
+- **more than one** → the image request fails closed and lists every
+  candidate, asking you to configure `visionProvider` + `visionModel`
+  explicitly.
+
+Discovery is lazy: text-only requests never trigger it. Discovery is also
+**strictly capability-based** — model names, provider names, and external
+knowledge are never used to guess image support; only explicit DSH metadata
+counts, and no probing request is ever sent to test capability.
+
+### Explicit configuration (advanced override)
+
+To pin a specific Vision route yourself, configure both keys:
 
 ```yaml
 - id: dsh-vision-bridge
@@ -421,14 +463,20 @@ array of loader patch entries. Add (or extend) an entry with
     # providerId: my-bridge             # optional synthetic provider id
 ```
 
+Explicit configuration always wins over Auto-Discovery. Configure **both**
+`visionProvider` and `visionModel` or **neither** — configuring only one is a
+configuration error and fails fast at boot.
+
 ### Configuration keys
 
 | Key | Required | Meaning |
 |---|---|---|
 | `upstreamProvider` | yes | The DSH provider route to wrap. Its models must be positively text-only (declare `text` and not `image` input). |
-| `visionProvider` | yes | The DSH provider route that serves the image-capable Vision model. |
-| `visionModel` | yes | The image-capable model id on the Vision route. |
-| `providerId` | no | The synthetic wrapper's provider id. Defaults to `<upstreamProvider>-vision-bridge`. It must differ from both `upstreamProvider` and `visionProvider` (it may otherwise only wrap itself). |
+| `visionProvider` | no\* | The DSH provider route that serves the image-capable Vision model. Required together with `visionModel`; when both are omitted, Vision Auto-Discovery applies. |
+| `visionModel` | no\* | The image-capable model id on the Vision route. Required together with `visionProvider`; when both are omitted, Vision Auto-Discovery applies. |
+| `providerId` | no | The synthetic wrapper's provider id. Defaults to `<upstreamProvider>-vision-bridge`. It must differ from `upstreamProvider` (and from `visionProvider` when configured). |
+
+\* Either both or neither must be configured.
 
 Notes:
 
@@ -443,8 +491,9 @@ Notes:
   credentials layer). The bridge has no secret store of its own.
 - **The Evidence cache is not configurable.** Its scope is fixed
   (session-scoped, in-memory — see [Caching behavior](#caching-behavior)).
-- If the bridge is enabled but its config is missing or incomplete, the
-  profile fails to boot with an error naming the missing key.
+- If the bridge is enabled but `upstreamProvider` is missing, or only one of
+  `visionProvider`/`visionModel` is set, the profile fails to boot with an
+  error naming the problem.
 
 ## Advanced Installer Options
 
@@ -458,7 +507,7 @@ it does not have. The following flags are supported:
 | `--vision-provider <id>` | Provider route serving the image-capable model. |
 | `--vision-model <id>` | Image-capable model id on the vision route. |
 | `--provider-id <id>` | Optional custom wrapper provider id (defaults to `<upstreamProvider>-vision-bridge`). |
-| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.4`). |
+| `--version <release>` | Bridge release to install (must be a trusted release; default `0.2.5`). |
 | `--tarball <path>` | Install from a local release tarball (SHA-256 verified against the trusted release map). |
 | `--yes` | Skip the final confirmation (never skips verification). |
 | `--what-if` | Print the plan — including the exact configuration that would be written — without downloading or writing anything. |
@@ -482,30 +531,30 @@ Already have DSH installed and a profile? Here is the shortest verified path.
 Every `dsh …` command can also be run as `npx @deepseek-ai/dsh …` if `dsh`
 is not on your `PATH` (see [1. Prerequisites](#1-prerequisites)):
 
-1. **Download** the v0.2.4 artifact from the
-   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.4):
+1. **Download** the v0.2.5 artifact from the
+   [release page](https://github.com/TwistedRiCen/dsh-vision-bridge/releases/tag/v0.2.5):
 
    ```powershell
-   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz' -OutFile 'dsh-vision-bridge-0.2.4.tgz'
+   Invoke-WebRequest -Uri 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz' -OutFile 'dsh-vision-bridge-0.2.5.tgz'
    ```
 
 2. **Verify** the checksum ([details](#3-verify-the-checksum)):
 
    ```powershell
-   (Get-FileHash .\dsh-vision-bridge-0.2.4.tgz -Algorithm SHA256).Hash
+   (Get-FileHash .\dsh-vision-bridge-0.2.5.tgz -Algorithm SHA256).Hash
    ```
 
    Compare it against the value published on the release page (the
-   `dsh-vision-bridge-0.2.4.tgz.sha256` release asset).
+   `dsh-vision-bridge-0.2.5.tgz.sha256` release asset).
 
 3. **Install** into your profile ([details](#4-install-the-plugin-into-your-profile)):
 
    ```powershell
-   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.4.tgz
+   dsh plugin --profile <profile> add .\dsh-vision-bridge-0.2.5.tgz
    ```
 
    (Or, from npm:
-   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4`.)
+   `dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5`.)
 
 4. **Configure** the row in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`
    ([details](#configuration)):
@@ -514,9 +563,11 @@ is not on your `PATH` (see [1. Prerequisites](#1-prerequisites)):
    - id: dsh-vision-bridge
      config:
        upstreamProvider: <text-provider>
-       visionProvider: <vision-provider>
-       visionModel: <vision-model>
    ```
+
+   (The bridge auto-discovers the Vision target on the first image request.
+   To pin a specific Vision route instead, add `visionProvider` and
+   `visionModel` — see [Configuration](#configuration).)
 
 5. **Boot** your profile ([details](#6-start-or-restart-dsh)):
 
@@ -535,9 +586,10 @@ is not on your `PATH` (see [1. Prerequisites](#1-prerequisites)):
    If the request fails, see [Troubleshooting](#troubleshooting).
 
 Placeholders: `<profile>` — the DSH profile you normally use;
-`<text-provider>` — the route of the text-only model you want to wrap;
-`<vision-provider>` / `<vision-model>` — the route and model id of an
-image-capable model available to your DSH installation.
+`<text-provider>` — the route of the text-only model you want to wrap.
+`<vision-provider>` / `<vision-model>` — only needed for the explicit
+(non-auto) configuration: the route and model id of an image-capable model
+available to your DSH installation.
 
 ## Usage examples
 
@@ -741,7 +793,10 @@ tolerance.
 | Symptom | Likely cause | What to check |
 |---|---|---|
 | `dsh` is not recognized as a command (`dsh: command not found`) | The DSH CLI is not installed or not on your `PATH`. | Install DeepSeek Harness per its README, or run the same commands on demand with `npx @deepseek-ai/dsh …` (for example `npx @deepseek-ai/dsh plugin --profile <profile> add …`). |
-| Profile boot fails with `config "upstreamProvider"` / `"visionProvider"` / `"visionModel"` must be a non-empty string | The bridge row has no (or incomplete) config. | Add all three required keys to the `dsh-vision-bridge` entry in the profile's `cordis.patch.yml`. |
+| Profile boot fails with `config "upstreamProvider"` must be a non-empty string | The bridge row has no `upstreamProvider`. | Add `upstreamProvider` to the `dsh-vision-bridge` entry in the profile's `cordis.patch.yml`. |
+| Profile boot fails with `config "visionProvider" and "visionModel" must be configured together` | Only one of the two Vision keys is configured. | Configure both `visionProvider` and `visionModel`, or omit both to use Vision Auto-Discovery. |
+| Request fails: vision auto-discovery found no image-capable model | Auto mode is on, and no DSH model positively declares image input. | Configure an image-capable model in DSH (its metadata must include `image` in `inputModalities`), or set `visionProvider` + `visionModel` explicitly. |
+| Request fails: vision auto-discovery found multiple image-capable models | Auto mode is on and more than one DSH model positively declares image input. | Set `visionProvider` + `visionModel` explicitly to pick one of the listed candidates. |
 | `dsh: profile "<name>" does not exist` | The profile was never created. | Create it with `dsh plugin --profile <profile> add ...`, or use the profile you normally boot. |
 | The bridge row is missing from `dsh --dump-config` output | The bundle was not registered in the profile. | Check that `@liangdacheng/dsh-vision-bridge` is in `dsh.profile.bundles` in the profile's `package.json`; append it manually if your DSH build does not reconcile automatically, then restart. |
 | The `(vision bridge)` models do not appear in the model catalog | The upstream route is unavailable at discovery time, or its models are not text-only. | Make sure the upstream provider plugin is enabled in the profile and that the model you want to wrap declares text-only input. Restart the profile after providers register. |
@@ -773,10 +828,10 @@ installed by an earlier release:
 
   ```powershell
   dsh plugin --profile <profile> remove dsh-vision-bridge
-  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.4
+  dsh plugin --profile <profile> add @liangdacheng/dsh-vision-bridge@0.2.5
   ```
 
-  (Instead of the registry spec you can add the downloaded v0.2.4 tarball.)
+  (Instead of the registry spec you can add the downloaded v0.2.5 tarball.)
   Do **not** `add` the new package while the old unscoped dependency is still
   present — both bundle entries would then be active.
 
@@ -885,6 +940,13 @@ Runtime dependencies: **0**. The released artifact contains only `dist`,
   claim is made about other providers or arbitrary image counts.
 - **Wrapping rules:** only positively text-only models can be wrapped; the
   Vision route must positively declare image input.
+- **Vision Auto-Discovery:** discovery runs on the first image request and
+  pins the target for the plugin lifetime. It fails closed when DSH declares
+  zero or multiple image-capable models (list every candidate in the latter
+  case); it never guesses capability from model/provider names and never
+  probes providers. The installer (v0.2.5) writes the minimal upstream-only
+  configuration automatically; switch to Auto-Discovery by omitting
+  `visionProvider`/`visionModel` from the profile config.
 - **Retry budget:** multi-image recovery is at most 2 attempts; provider and
   transport errors are never retried.
 - **Cache:** in-memory and session-scoped only; no persistence, no

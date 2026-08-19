@@ -42,7 +42,7 @@ import { fetch as undiciFetch, EnvHttpProxyAgent } from 'undici'
 /* ------------------------------------------------------------------ */
 
 /** Installer identity. */
-export const SETUP_VERSION = '0.2.4'
+export const SETUP_VERSION = '0.2.5'
 
 /** The one DSH CLI version this installer materializes and drives. */
 export const DSH_PIN = '0.1.0-rc.6'
@@ -67,7 +67,7 @@ export const BRIDGE_ROW_ID = 'dsh-vision-bridge'
 export const LEGACY_RELEASE_VERSIONS = Object.freeze(['0.2.1', '0.2.2', '0.2.3'])
 
 /** The bridge release this installer installs by default. */
-export const DEFAULT_BRIDGE_VERSION = '0.2.4'
+export const DEFAULT_BRIDGE_VERSION = '0.2.5'
 
 /**
  * Trusted release map. The SHA-256 values here are the ONLY accepted
@@ -75,10 +75,17 @@ export const DEFAULT_BRIDGE_VERSION = '0.2.4'
  * not in this map is refused for automatic download, and a local tarball is
  * refused unless its SHA-256 matches a mapped entry.
  *
- * The 0.2.4 entry carries `packageName`: the scoped npm identity inside the
- * tarball. Entries without `packageName` are the legacy unscoped releases.
+ * The 0.2.4/0.2.5 entries carry `packageName`: the scoped npm identity
+ * inside the tarball. Entries without `packageName` are the legacy unscoped
+ * releases.
  */
 export const RELEASE_MAP = Object.freeze({
+  '0.2.5': Object.freeze({
+    asset: 'dsh-vision-bridge-0.2.5.tgz',
+    url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz',
+    sha256: '5BFBEC518AFBC3C0CF6D18722631EC8D793673FBA1B8EBFE2C3EB0E2BAC977CD',
+    packageName: '@liangdacheng/dsh-vision-bridge',
+  }),
   '0.2.4': Object.freeze({
     asset: 'dsh-vision-bridge-0.2.4.tgz',
     url: 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz',
@@ -325,28 +332,74 @@ export function validateProviderId(value, label) {
  * guards (src/index.ts validateConfig): the wrapper id must never equal the
  * upstream or vision route. The optional providerId is only written when
  * explicitly provided; otherwise the bridge default applies.
+ *
+ * V0.3.1 three-state contract: visionProvider + visionModel together (Manual
+ * config, the pre-existing behavior), both absent/undefined (Auto config —
+ * only upstreamProvider is written), or exactly one present (config error,
+ * fail fast, matching the V0.3 runtime validateConfig both-or-neither guard).
  */
 export function buildBridgeConfig({ upstreamProvider, visionProvider, visionModel, providerId }) {
   const upstream = validateProviderId(upstreamProvider, 'upstreamProvider')
-  const vision = validateProviderId(visionProvider, 'visionProvider')
-  const model = validateProviderId(visionModel, 'visionModel')
+  const hasVisionProvider = visionProvider !== undefined
+  const hasVisionModel = visionModel !== undefined
+  if (hasVisionProvider !== hasVisionModel) {
+    throw new Error(
+      'visionProvider and visionModel must be configured together (both or neither); got '
+      + `visionProvider=${JSON.stringify(visionProvider)} visionModel=${JSON.stringify(visionModel)}`,
+    )
+  }
   const wrapperId = providerId === undefined ? `${upstream}-vision-bridge` : validateProviderId(providerId, 'providerId')
   if (wrapperId === upstream) {
     throw new Error(`providerId "${wrapperId}" must not equal upstreamProvider (the wrapper would wrap itself)`)
   }
-  if (wrapperId === vision) {
-    throw new Error(`providerId "${wrapperId}" must not equal visionProvider (vision calls would recurse)`)
+  if (hasVisionProvider) {
+    const vision = validateProviderId(visionProvider, 'visionProvider')
+    const model = validateProviderId(visionModel, 'visionModel')
+    if (wrapperId === vision) {
+      throw new Error(`providerId "${wrapperId}" must not equal visionProvider (vision calls would recurse)`)
+    }
+    const config = { upstreamProvider: upstream, visionProvider: vision, visionModel: model }
+    if (providerId !== undefined) config.providerId = wrapperId
+    return config
   }
-  const config = { upstreamProvider: upstream, visionProvider: vision, visionModel: model }
+  // Auto config: only the upstream route is written; the Vision target is
+  // discovered by the bridge runtime (V0.3) on the first image request.
+  const config = { upstreamProvider: upstream }
   if (providerId !== undefined) config.providerId = wrapperId
   return config
 }
 
-/** True when an existing config carries the three required non-empty strings. */
+/** True when an existing config carries the three required non-empty strings (Manual mode). */
 export function isConfigComplete(config) {
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return false
   return ['upstreamProvider', 'visionProvider', 'visionModel']
     .every((key) => typeof config[key] === 'string' && config[key].trim() !== '')
+}
+
+/** True when an existing config carries only a non-empty upstreamProvider (Auto mode). */
+export function isConfigAutoComplete(config) {
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) return false
+  return typeof config.upstreamProvider === 'string' && config.upstreamProvider.trim() !== ''
+    && config.visionProvider === undefined
+    && config.visionModel === undefined
+}
+
+/**
+ * Classify a bridge config's mode. 'manual' and 'auto' are both valid and
+ * complete; 'invalid' covers a missing/blank upstream or exactly one vision
+ * key; 'absent' covers a null/non-object config (no row config at all).
+ */
+export function configMode(config) {
+  if (isConfigComplete(config)) return 'manual'
+  if (isConfigAutoComplete(config)) return 'auto'
+  if (config === null || config === undefined || typeof config !== 'object' || Array.isArray(config)) return 'absent'
+  return 'invalid'
+}
+
+/** True when an existing config is usable as-is (Manual or Auto). Internal. */
+function hasValidConfig(config) {
+  const mode = configMode(config)
+  return mode === 'manual' || mode === 'auto'
 }
 
 /* ------------------------------------------------------------------ */
@@ -1061,7 +1114,7 @@ export function computePlanKind({ installedVersion, targetVersion, configState }
     return 'downgrade'
   }
   if (installedVersion !== null && compareSemver(installedVersion, targetVersion) === 0) {
-    if (configState.status === 'present' && isConfigComplete(configState.config)) return 'no-changes'
+    if (configState.status === 'present' && hasValidConfig(configState.config)) return 'no-changes'
     return 'same-version-repair'
   }
   return installedVersion === null ? 'install' : 'upgrade'
@@ -1120,6 +1173,92 @@ export function matchTarballSha(sha, version, releaseMap = RELEASE_MAP) {
 /* ------------------------------------------------------------------ */
 /* Profile file helpers                                                */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Parse settings.yaml and derive the text-only upstream provider candidates.
+ *
+ * Positive-only discovery (V0.3.1, mirrors the bridge's capability rule):
+ * - llm-pi-ai.providers: a provider route is a candidate when at least one
+ *   of its models has an `input` array that includes 'text' and does NOT
+ *   include 'image'. A model with no `input` field is UNKNOWN (not text-only
+ *   evidence); an `input` containing 'image' or an empty array is excluded.
+ * - llm-deepseek: when that section exists (as a map), 'deepseek-official'
+ *   is a candidate (its route-level contract is text-only regardless of any
+ *   models list it may carry).
+ *
+ * Returns { status: 'ok', candidates: [{ provider, displayName }] } with
+ * candidates sorted by provider id, or { status: 'unreadable', reason } when
+ * the document cannot be parsed or its top level is not a map. Credential
+ * references in the settings document are never inspected or returned.
+ */
+export function readUpstreamCandidates(settingsYamlText) {
+  let doc
+  try {
+    doc = parseDocument(settingsYamlText)
+  } catch (error) {
+    return { status: 'unreadable', reason: `settings.yaml failed to parse: ${error.message}` }
+  }
+  if (doc.errors.length > 0) {
+    return { status: 'unreadable', reason: `settings.yaml failed to parse: ${doc.errors[0].message}` }
+  }
+  const top = doc.contents
+  if (top === null || top === undefined) return { status: 'ok', candidates: [] }
+  if (!isMap(top)) {
+    return { status: 'unreadable', reason: 'settings.yaml top level must be a YAML map' }
+  }
+
+  const candidates = []
+  const piAi = top.get('llm-pi-ai', true)
+  if (isMap(piAi)) {
+    const providers = piAi.get('providers', true)
+    if (isMap(providers)) {
+      for (const { key, value } of providers.items) {
+        const providerId = String(key)
+        if (!isMap(value)) continue // malformed provider entry: not a candidate
+        const rawName = value.get('displayName')
+        const displayName = typeof rawName === 'string' && rawName.trim() !== '' ? rawName.trim() : providerId
+        const models = value.get('models', true)
+        if (!isSeq(models)) continue // no models list: not a text-only candidate
+        let textOnly = false
+        for (const item of models.items) {
+          if (!isMap(item)) continue
+          const input = item.get('input', true)
+          if (!isSeq(input)) continue // absent input = UNKNOWN, not text-only evidence
+          const mods = input.toJSON()
+          if (Array.isArray(mods) && mods.includes('text') && !mods.includes('image')) {
+            textOnly = true
+            break
+          }
+        }
+        if (textOnly) candidates.push({ provider: providerId, displayName })
+      }
+    }
+  }
+  const deepseek = top.get('llm-deepseek', true)
+  if (isMap(deepseek)) {
+    candidates.push({ provider: 'deepseek-official', displayName: 'DeepSeek' })
+  }
+  candidates.sort((a, b) => a.provider.localeCompare(b.provider))
+  return { status: 'ok', candidates }
+}
+
+/**
+ * Read the global settings.yaml from a DSH_HOME and derive upstream
+ * candidates. A missing file is a valid empty set (0 candidates); a read
+ * failure or unparseable document is reported explicitly (never treated as
+ * zero candidates).
+ */
+export function parseUpstreamCandidatesFile(dshHome) {
+  const file = path.join(dshHome, 'settings.yaml')
+  if (!existsSync(file)) return { status: 'ok', candidates: [] }
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch (error) {
+    return { status: 'unreadable', reason: `settings.yaml could not be read: ${error.message}` }
+  }
+  return readUpstreamCandidates(text)
+}
 
 export function profilePatchPath(profileDir) {
   return path.join(profileDir, 'cordis.patch.yml')
@@ -1233,28 +1372,6 @@ export async function runSetup(deps = {}) {
         && effectiveProviderId(left) === effectiveProviderId(right)
     }
 
-    /** Prompt for any of the three ids that were not passed as flags. */
-    const promptMissingIds = async () => {
-      let upstreamProvider = options.upstreamProvider ?? null
-      let visionProvider = options.visionProvider ?? null
-      let visionModel = options.visionModel ?? null
-      if (upstreamProvider === null) {
-        log('Upstream provider (the text-only route to wrap).')
-        log('  Find this ID on the DSH Models page.')
-        upstreamProvider = await prompt('Upstream provider:')
-      }
-      if (visionProvider === null) {
-        log('Vision provider (the route serving an image-capable model).')
-        log('  May be the same provider as upstream.')
-        visionProvider = await prompt('Vision provider:')
-      }
-      if (visionModel === null) {
-        log('Vision model (must support image input).')
-        visionModel = await prompt('Vision model:')
-      }
-      return buildBridgeConfig({ upstreamProvider, visionProvider, visionModel, providerId: options.providerId })
-    }
-
     const whatIf = options.whatIf
     const yes = options.yes
     const interactive = prompt !== null
@@ -1356,29 +1473,76 @@ export async function runSetup(deps = {}) {
       )
     }
 
-    // 8. Provider/model inputs (user-entered by design; no discovery, no guessing)
-    //    and the keep/reconfigure/cancel decision.
+    // 8. Upstream provider resolution (V0.3.1 guided discovery) and the
+    //    keep/reconfigure/cancel decision. Priority: explicit CLI input >
+    //    existing valid config > single discovered candidate > interactive
+    //    selection > fail closed. Vision keys are no longer prompted: a
+    //    discovered/repaired config is Auto (Vision target auto-discovered by
+    //    the bridge runtime on the first image request).
     let config = null
     let writeConfig = false
-    const providerArgsGiven = options.upstreamProvider !== undefined
-      && options.visionProvider !== undefined
-      && options.visionModel !== undefined
-    if (providerArgsGiven) {
+    const hasUpstreamArg = options.upstreamProvider !== undefined
+    const hasVisionArg = options.visionProvider !== undefined || options.visionModel !== undefined
+
+    /** Resolve an upstream provider via settings.yaml discovery (0/1/N policy). */
+    const resolveUpstreamByDiscovery = async () => {
+      const result = parseUpstreamCandidatesFile(dshHome)
+      if (result.status === 'unreadable') {
+        fail(result.reason)
+      }
+      const candidates = result.candidates
+      if (candidates.length === 0) {
+        fail(
+          'no text-only upstream provider could be detected from settings.yaml. '
+          + 'Configure a text-only model in DSH (Models page) and retry, or pass --upstream-provider <id> explicitly.',
+        )
+      }
+      let selected = null
+      if (candidates.length === 1) {
+        selected = candidates[0]
+        log(`Detected upstream: ${selected.displayName}`)
+        log(`  provider: ${selected.provider}`)
+        log('  Vision target: Auto-discovery at runtime')
+      } else if (interactive) {
+        log('Multiple text-only upstream providers were detected:')
+        candidates.forEach((candidate, index) => {
+          log(`  [${index + 1}] ${candidate.displayName} (provider: ${candidate.provider})`)
+        })
+        const answer = await prompt('Select upstream provider (number):')
+        if (answer === null) fail('no upstream provider selected')
+        const asNumber = Number(answer)
+        if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > candidates.length) {
+          fail('invalid selection; no changes were made')
+        }
+        selected = candidates[asNumber - 1]
+      } else {
+        fail(
+          'multiple text-only upstream providers were detected; '
+          + 'pass --upstream-provider <id> to choose one, or run interactively.',
+        )
+      }
+      return buildBridgeConfig({ upstreamProvider: selected.provider, providerId: options.providerId })
+    }
+
+    if (hasUpstreamArg || hasVisionArg) {
+      // Explicit CLI input: buildBridgeConfig enforces non-empty ids and the
+      // both-or-neither vision-key contract (three keys = Manual, only
+      // upstream = Auto, exactly one vision key = fail).
       config = buildBridgeConfig({
         upstreamProvider: options.upstreamProvider,
         visionProvider: options.visionProvider,
         visionModel: options.visionModel,
         providerId: options.providerId,
       })
-      writeConfig = !(configState.status === 'present' && isConfigComplete(configState.config) && configsEqual(config, configState.config))
-    } else if (configState.status === 'present' && isConfigComplete(configState.config)) {
+      writeConfig = !(configState.status === 'present' && hasValidConfig(configState.config) && configsEqual(config, configState.config))
+    } else if (configState.status === 'present' && hasValidConfig(configState.config)) {
       if (interactive) {
         const answer = await prompt('Bridge configuration already exists. Keep it, reconfigure, or cancel? [keep/reconfigure/cancel]')
         if (answer === null || answer === '' || answer.toLowerCase().startsWith('k')) {
           config = configState.config
           writeConfig = false
         } else if (answer.toLowerCase().startsWith('r')) {
-          config = await promptMissingIds()
+          config = await resolveUpstreamByDiscovery()
           writeConfig = !configsEqual(config, configState.config)
         } else if (answer.toLowerCase().startsWith('c')) {
           log('cancelled; no changes were made')
@@ -1391,27 +1555,17 @@ export async function runSetup(deps = {}) {
         writeConfig = false
       }
     } else if (configState.status === 'absent') {
-      if (!interactive) {
-        fail('--upstream-provider, --vision-provider, and --vision-model are required together when running non-interactively (or pass --help)')
-      }
-      config = await promptMissingIds()
+      config = await resolveUpstreamByDiscovery()
       writeConfig = true
     } else {
-      // Incomplete existing config: repair requires the three ids.
-      if (providerArgsGiven) {
-        config = buildBridgeConfig({
-          upstreamProvider: options.upstreamProvider,
-          visionProvider: options.visionProvider,
-          visionModel: options.visionModel,
-          providerId: options.providerId,
-        })
-      } else if (interactive) {
+      // Incomplete/invalid existing config: repair via discovery.
+      if (interactive) {
         const answer = await prompt('Existing bridge configuration is incomplete. Reconfigure it now? [y/n]')
         const repair = answer !== null && (answer === '' || answer.toLowerCase().startsWith('y'))
         if (!repair) fail('existing configuration is incomplete and was not repaired; no changes were made')
-        config = await promptMissingIds()
+        config = await resolveUpstreamByDiscovery()
       } else {
-        fail('existing bridge configuration is incomplete; pass --upstream-provider, --vision-provider, and --vision-model to repair it')
+        fail('existing bridge configuration is incomplete; pass --upstream-provider <id> to repair it, or run interactively')
       }
       writeConfig = true
     }
@@ -1423,7 +1577,7 @@ export async function runSetup(deps = {}) {
     log(`  Action:   ${planKind}`)
     log(`  Version:  ${targetVersion}${installedVersion !== null ? ` (installed: ${installedVersion})` : ''}`)
     log(`  Upstream: ${config.upstreamProvider}`)
-    log(`  Vision:   ${config.visionProvider} / ${config.visionModel}`)
+    log(`  Vision:   ${configMode(config) === 'auto' ? 'Auto-discovery at runtime' : `${config.visionProvider} / ${config.visionModel}`}`)
     log(`  Source:   ${target.source === 'tarball' ? tarballPlan.sourcePath : tarballPlan.entry.url}`)
     log(`  SHA-256:  ${tarballPlan.entry.sha256}`)
     const tempRoot = pickTempRoot(env, platform)
@@ -1615,8 +1769,10 @@ export async function runSetup(deps = {}) {
     const dump = runNodeCommand(nodeExecutable, [dshEntry, '--profile', profileName, '--dump-config'], { env })
     const output = `${dump.stdout}\n${dump.stderr}`
     const rowOk = output.includes(BRIDGE_ROW_ID)
-    const valuesOk = config !== null
-      && ['upstreamProvider', 'visionProvider', 'visionModel'].every((key) => output.includes(config[key]))
+    const requiredKeys = configMode(config) === 'auto'
+      ? ['upstreamProvider']
+      : ['upstreamProvider', 'visionProvider', 'visionModel']
+    const valuesOk = config !== null && requiredKeys.every((key) => output.includes(config[key]))
     if (dump.status !== 0 || !rowOk || !valuesOk) {
       if (configWrite !== null) {
         try {
@@ -1627,14 +1783,14 @@ export async function runSetup(deps = {}) {
       }
       const why = dump.status !== 0
         ? `dsh --profile ${profileName} --dump-config exited ${dump.status === null ? 'killed' : dump.status}`
-        : 'the composed config is missing the bridge row or one of the three required keys'
+        : 'the composed config is missing the bridge row or a required key'
       fail(
         `validation failed: ${why}. `
         + 'The configuration was restored; the package remains installed. '
         + 'Check the profile and re-run, or use Manual Installation.',
       )
     }
-    log('ok: composed configuration verified (bridge row + all three keys present)')
+    log('ok: composed configuration verified (bridge row + required keys present)')
 
     log('')
     log(`${BRIDGE_PACKAGE_NAME} ${targetVersion} is ready in profile "${profileName}".`)

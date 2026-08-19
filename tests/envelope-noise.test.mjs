@@ -1,7 +1,10 @@
 // v0.2.1 U+200B envelope-noise disposition tests (E-N1-E-N12 + abuse matrix).
-// Approved design: bounded leading U+200B tolerance, MULTI-IMAGE ONLY,
-// anchored at position 0 of the post-envelope parse input, exactly once,
-// immediately before JSON.parse. Single-image stays sealed (no tolerance).
+// Approved design: bounded leading U+200B tolerance, anchored at position 0 of
+// the post-envelope parse input, exactly once, immediately before JSON.parse.
+// v0.2.1-v0.2.4: MULTI-IMAGE ONLY. v0.2.5 candidate: the tolerance is extended
+// to the SINGLE-IMAGE path (real-provider evidence: intermittent leading
+// U+200B envelope on single-image Vision output — 2026-08-18, 4 consecutive
+// user-session failures). Single-image keeps NO retry, NO forced temperature.
 // All deterministic mock-ctx tests — no provider.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -338,18 +341,135 @@ test('E-N8 shared-budget interaction: [ZWSP+INVALID_JSON, ZWSP+INVALID_JSON, SPA
 /* E-N9: single-image scope regression                                 */
 /* ------------------------------------------------------------------ */
 
-test('E-N9 single-image U+200B + valid Evidence -> REJECTED: 1 call, no retry, no temperature, sealed behavior', async () => {
+test('E-N9 single-image U+200B + valid Evidence -> ACCEPTED: 1 call, no retry, no forced temperature, semantics preserved', async () => {
+  const plain = JSON.stringify(single('EN9'))
+  const zwspCtx = makeCtx({
+    visionResponder: queueResponder([chunksOf(ZWSP + plain)]),
+  })
+  applyBridge(zwspCtx.ctx)
+  await stream(zwspCtx.adapters, singleImageRequest())
+  assert.equal(zwspCtx.calls.visionStreams.length, 1, 'tolerance: no retry consumed')
+  assert.equal('temperature' in zwspCtx.calls.visionStreams[0], false, 'single-image Vision gets NO forced temperature')
+  assert.equal(zwspCtx.calls.upstreamStreams.length, 1, 'downstream once')
+
+  // Semantics preservation: the canonical rendered Evidence must be identical
+  // to a control run whose provider emitted the same JSON without the prefix.
+  const plainCtx = makeCtx({ visionResponder: queueResponder([chunksOf(plain)]) })
+  applyBridge(plainCtx.ctx)
+  await stream(plainCtx.adapters, singleImageRequest())
+  assert.equal(wireOf(zwspCtx.calls).at(-1).text, wireOf(plainCtx.calls).at(-1).text, 'canonical Evidence deep-equal to the no-ZWSP control')
+})
+
+test('E-N9b single fence + inner leading U+200B -> fence unwrap, then strip, then parse success', async () => {
   const { ctx, calls, adapters } = makeCtx({
-    visionResponder: queueResponder([chunksOf(ZWSP + JSON.stringify(single('EN9'))) ]),
+    visionResponder: queueResponder([chunksOf(fenced(ZWSP + JSON.stringify(single('EN9B'))))]),
   })
   applyBridge(ctx)
+  await stream(adapters, singleImageRequest())
+  assert.equal(calls.visionStreams.length, 1, 'existing fence tolerance + leading strip compose once')
+  assert.equal(calls.upstreamStreams.length, 1)
+  assert.ok(wireOf(calls).at(-1).text.includes('EN9B'))
+})
+
+test('E-N9c single prose + U+200B + valid JSON -> parse fail (no extraction, fail closed)', async () => {
+  const prose = `Here is the analysis:\n${ZWSP}${JSON.stringify(single('EN9C'))}`
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(prose)]) })
+  applyBridge(ctx)
   await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
-    assert.match(error.message, SINGLE_PARSE, 'v0.2.0 single-image message retained')
+    assert.match(error.message, SINGLE_PARSE)
     assert.doesNotMatch(error.message, /retry exhausted/, 'single-image never retries')
     return true
   })
-  assert.equal(calls.visionStreams.length, 1, 'no single-image tolerance, no retry')
-  assert.equal('temperature' in calls.visionStreams[0], false, 'single-image Vision gets NO forced temperature')
+  assert.equal(calls.visionStreams.length, 1, 'tolerance cannot extract JSON from prose')
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9d single valid JSON + trailing U+200B -> parse fail (no trailing tolerance)', async () => {
+  const trailing = JSON.stringify(single('EN9D')) + ZWSP
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(trailing)]) })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9e single U+2060 + valid JSON -> parse fail (only U+200B is tolerated)', async () => {
+  const wordJoiner = `\u2060${JSON.stringify(single('EN9E'))}`
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(wordJoiner)]) })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9f single U+200B + malformed JSON -> parse fail, no retry (tolerance cannot repair)', async () => {
+  const { ctx, calls, adapters } = makeCtx({
+    visionResponder: queueResponder([chunksOf(ZWSP + 'not json {')]),
+  })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    assert.doesNotMatch(error.message, /retry exhausted/, 'single-image parse failure never retries')
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9g single U+200B + schema-invalid JSON -> validation failure (schema stays authoritative)', async () => {
+  const invalid = { ...single('EN9G'), summary: undefined }
+  const { ctx, calls, adapters } = makeCtx({
+    visionResponder: queueResponder([chunksOf(ZWSP + JSON.stringify(invalid))]),
+  })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, /^\[dsh-vision-bridge\] vision evidence failed validation:/)
+    assert.match(error.message, /summary/)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1, 'tolerance cannot bypass the schema')
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9h single multiple JSON objects -> parse fail (only ONE complete JSON value)', async () => {
+  const doubled = `${JSON.stringify(single('EN9H-A'))}${JSON.stringify(single('EN9H-B'))}`
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(doubled)]) })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9i single U+200B + valid JSON + trailing U+200B -> parse fail (envelope must be leading-only)', async () => {
+  const both = ZWSP + JSON.stringify(single('EN9I')) + ZWSP
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(both)]) })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
+  assert.equal(calls.upstreamStreams.length, 0)
+})
+
+test('E-N9j single fence containing prose remains invalid', async () => {
+  const prose = fenced('Here is the requested analysis, not JSON')
+  const { ctx, calls, adapters } = makeCtx({ visionResponder: queueResponder([chunksOf(prose)]) })
+  applyBridge(ctx)
+  await assert.rejects(stream(adapters, singleImageRequest()), (error) => {
+    assert.match(error.message, SINGLE_PARSE)
+    return true
+  })
+  assert.equal(calls.visionStreams.length, 1)
   assert.equal(calls.upstreamStreams.length, 0)
 })
 
@@ -457,19 +577,25 @@ const MATRIX = [
     name: 'U+200B + valid JSON',
     rawMulti: ZWSP + JSON.stringify(multiValid('MATRIX-1')),
     rawSingle: ZWSP + JSON.stringify(single('MATRIX-1')),
-    multi: MULTI_ACCEPT, single: SINGLE_REJECT,
+    multi: MULTI_ACCEPT, single: SINGLE_ACCEPT,
   },
   {
     name: 'U+200B U+200B + valid JSON',
     rawMulti: ZWSP + ZWSP + JSON.stringify(multiValid('MATRIX-2')),
     rawSingle: ZWSP + ZWSP + JSON.stringify(single('MATRIX-2')),
-    multi: MULTI_ACCEPT, single: SINGLE_REJECT,
+    multi: MULTI_ACCEPT, single: SINGLE_ACCEPT,
   },
   {
     name: 'space + U+200B + valid JSON',
     rawMulti: ` ${ZWSP}${JSON.stringify(multiValid('MATRIX-3'))}`,
     rawSingle: ` ${ZWSP}${JSON.stringify(single('MATRIX-3'))}`,
-    multi: MULTI_ACCEPT, single: SINGLE_REJECT,
+    multi: MULTI_ACCEPT, single: SINGLE_ACCEPT,
+  },
+  {
+    name: 'U+200B outside a Markdown fence (strip must not compose with fence unwrap)',
+    rawMulti: ZWSP + fenced(JSON.stringify(multiValid('MATRIX-F1'))),
+    rawSingle: ZWSP + fenced(JSON.stringify(single('MATRIX-F1'))),
+    multi: MULTI_REJECT, single: SINGLE_REJECT,
   },
   {
     name: 'U+FEFF + valid JSON (existing trim behavior)',

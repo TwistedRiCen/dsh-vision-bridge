@@ -33,6 +33,10 @@
  * interleaves per-attachment boundary labels ("Image i of N:") before each
  * ImageBlock (anti-merge request construction); EVIDENCE_POLICY_VERSION is 4.
  *
+ * v0.2.5 candidate (single-image U+200B envelope): the bounded leading-U+200B
+ * parse tolerance (v0.2.1, previously multi-only) is also enabled on the
+ * sealed single-image path; EVIDENCE_POLICY_VERSION is 5.
+ *
  * Consumed DSH runtime service: llm ONLY. The bridge never reads raw image
  * bytes — ImageBlocks ({type:'image', attachment: ref}) are passed through to
  * the configured vision route; resolving bytes via ctx.attachments.readImage
@@ -76,12 +80,27 @@ export const inject = ['llm'] as const
 export interface BridgeConfig {
   /** The explicit text-only reasoning provider route to wrap. */
   upstreamProvider: string
-  /** The DSH route that serves an image-capable vision model. */
-  visionProvider: string
-  /** The image-capable model id on the vision route. */
-  visionModel: string
+  /**
+   * The DSH route that serves an image-capable vision model. Optional: when
+   * absent (Auto mode), the bridge discovers the unique image-capable model.
+   */
+  visionProvider?: string
+  /**
+   * The image-capable model id on the vision route. Must be configured
+   * together with {@link visionProvider} (both or neither).
+   */
+  visionModel?: string
   /** Synthetic wrapper provider id (defaults to `<upstreamProvider>-vision-bridge`). */
   providerId?: string
+}
+
+/** validateConfig output: manual mode keeps the resolved vision keys; Auto
+ * mode leaves them undefined (discovery pins the target lazily at first use). */
+export interface ResolvedBridgeConfig {
+  upstreamProvider: string
+  visionProvider: string | undefined
+  visionModel: string | undefined
+  providerId: string
 }
 
 /**
@@ -90,8 +109,12 @@ export interface BridgeConfig {
  * upstream or vision route). upstreamProvider === visionProvider is ALLOWED:
  * one DSH route may serve a text reasoning model and an image-capable vision
  * model; recursion is only reachable through the synthetic route id.
+ *
+ * Three-state vision config: visionProvider + visionModel together (manual
+ * mode, today's exact semantics), both absent/undefined (Auto mode — lazy
+ * discovery), or exactly one present (config error, fail fast).
  */
-export function validateConfig(raw: BridgeConfig): Required<BridgeConfig> {
+export function validateConfig(raw: BridgeConfig): ResolvedBridgeConfig {
   const stringOr = (value: unknown, key: string): string => {
     if (typeof value !== 'string' || value.trim() === '') {
       throw new Error(`[dsh-vision-bridge] config "${key}" must be a non-empty string, got ${JSON.stringify(value)}`)
@@ -99,13 +122,20 @@ export function validateConfig(raw: BridgeConfig): Required<BridgeConfig> {
     return value.trim()
   }
   const upstreamProvider = stringOr(raw?.upstreamProvider, 'upstreamProvider')
-  const visionProvider = stringOr(raw?.visionProvider, 'visionProvider')
-  const visionModel = stringOr(raw?.visionModel, 'visionModel')
+  const hasVisionProvider = raw?.visionProvider !== undefined
+  const hasVisionModel = raw?.visionModel !== undefined
+  if (hasVisionProvider !== hasVisionModel) {
+    throw new Error(
+      `[dsh-vision-bridge] config "visionProvider" and "visionModel" must be configured together (both or neither); got visionProvider=${JSON.stringify(raw?.visionProvider)} visionModel=${JSON.stringify(raw?.visionModel)}`,
+    )
+  }
+  const visionProvider = hasVisionProvider ? stringOr(raw.visionProvider, 'visionProvider') : undefined
+  const visionModel = hasVisionModel ? stringOr(raw.visionModel, 'visionModel') : undefined
   const providerId = raw?.providerId === undefined ? `${upstreamProvider}-vision-bridge` : stringOr(raw.providerId, 'providerId')
   if (providerId === upstreamProvider) {
     throw new Error(`[dsh-vision-bridge] synthetic providerId "${providerId}" must not equal upstreamProvider (wrapper would wrap itself)`)
   }
-  if (providerId === visionProvider) {
+  if (visionProvider !== undefined && providerId === visionProvider) {
     throw new Error(`[dsh-vision-bridge] synthetic providerId "${providerId}" must not equal visionProvider (vision calls would recurse into the wrapper)`)
   }
   return { upstreamProvider, visionProvider, visionModel, providerId }
@@ -125,10 +155,14 @@ export function isImageCapable(info: Pick<LlmResolvedModelInfoLike, 'inputModali
 
 export function apply(ctx: BridgeContextLike, rawConfig: BridgeConfig = {} as BridgeConfig): void {
   const config = validateConfig(rawConfig)
-  const { upstreamProvider, visionProvider, visionModel, providerId } = config
+  const { upstreamProvider, providerId } = config
   // Stage 3B: fiber-local completed-value Evidence cache. The closure dies
   // with this apply, so config reload / disable / remove naturally destroy it.
   const cache = createEvidenceCache()
+  // Lazy vision-route target: manual mode resolves synchronously (no
+  // side effect, equivalent to the pre-existing behavior); Auto mode pins a
+  // discovered target on the first image work unit via single-flight.
+  const visionTarget = createVisionTargetResolver(ctx, config)
 
   const adapter: LlmAdapterLike = {
     providerInfo(provider) {
@@ -183,7 +217,7 @@ export function apply(ctx: BridgeContextLike, rawConfig: BridgeConfig = {} as Br
       }
     },
     stream(options) {
-      return bridgeStream(ctx, options, { upstreamProvider, visionProvider, visionModel }, cache)
+      return bridgeStream(ctx, options, { upstreamProvider, visionTarget }, cache)
     },
   }
 
@@ -191,10 +225,130 @@ export function apply(ctx: BridgeContextLike, rawConfig: BridgeConfig = {} as Br
   ctx.llm.registerAdapter([providerId], adapter)
 }
 
+/** Resolved vision route target (provider + model), pinned in Auto mode. */
+interface VisionTarget {
+  visionProvider: string
+  visionModel: string
+}
+
+/**
+ * Per-apply lazy vision-target resolver. Manual mode returns a no-side-effect
+ * resolver over the configured keys (exactly today's behavior); Auto mode
+ * returns the pinning single-flight resolver over lazy discovery.
+ */
+function createVisionTargetResolver(
+  ctx: BridgeContextLike,
+  config: ResolvedBridgeConfig,
+): (signal?: AbortSignal) => Promise<VisionTarget> {
+  if (config.visionProvider !== undefined && config.visionModel !== undefined) {
+    const target: VisionTarget = { visionProvider: config.visionProvider, visionModel: config.visionModel }
+    return async () => target
+  }
+  return createAutoVisionTarget(ctx, config.providerId)
+}
+
+/**
+ * Auto-mode target resolver: discovery runs on the FIRST image work unit and
+ * pins for the plugin instance lifetime. A failed discovery is NOT pinned and
+ * its in-flight promise is cleared, so the next image request retries;
+ * concurrent first-image requests share exactly one discovery (single-flight).
+ *
+ * Single-flight abort semantics: discovery starts with the FIRST caller's
+ * AbortSignal; concurrent waiters share that same in-flight discovery. If the
+ * first caller aborts, the shared discovery fails closed (the abort propagates
+ * to every waiter). A waiter's own abort is NOT honored while the shared
+ * discovery is still in flight — it only takes effect on that waiter's own
+ * subsequent resolve/stream work, never on the shared discovery itself.
+ */
+function createAutoVisionTarget(
+  ctx: BridgeContextLike,
+  providerId: string,
+): (signal?: AbortSignal) => Promise<VisionTarget> {
+  let pinned: VisionTarget | undefined
+  let inflight: Promise<VisionTarget> | undefined
+  return async (signal) => {
+    if (pinned !== undefined) return pinned
+    if (inflight === undefined) {
+      inflight = discoverUniqueVisionTarget(ctx, providerId, signal)
+        .then((t) => {
+          pinned = t
+          return t
+        })
+        .finally(() => {
+          inflight = undefined
+        })
+    }
+    return inflight
+  }
+}
+
+/**
+ * Auto-discovery (D002/D003/D004/D008): enumerate every registered provider
+ * except the wrapper's own synthetic route, filter the catalog to models that
+ * positively declare image input, confirm each candidate via exact-model
+ * metadata, and require EXACTLY one survivor. 0 -> fail closed with guidance;
+ * >=2 -> fail closed with a deterministic sorted listing. Any provider catalog
+ * enumeration failure fails closed naming that provider.
+ */
+async function discoverUniqueVisionTarget(
+  ctx: BridgeContextLike,
+  selfProviderId: string,
+  signal?: AbortSignal,
+): Promise<VisionTarget> {
+  const providers = ctx.llm.listProviders().filter((p) => p.id !== selfProviderId)
+  const candidates: VisionTarget[] = []
+  let confirmedFailed = 0
+  for (const provider of providers) {
+    throwIfAborted(signal)
+    let models: LlmModelInfoLike[]
+    try {
+      models = await ctx.llm.listModels(provider.id)
+    } catch (error) {
+      throw new Error(
+        `[dsh-vision-bridge] vision auto-discovery failed: cannot enumerate models for provider "${provider.id}": ${errText(error)}`,
+      )
+    }
+    for (const model of models) {
+      if (!isImageCapable(model)) continue
+      throwIfAborted(signal)
+      let info: LlmResolvedModelInfoLike
+      try {
+        info = await ctx.llm.resolveModelInfo(provider.id, model.id, signal)
+      } catch {
+        // A caller abort must not be disguised as a 0-candidate outcome.
+        if (signal?.aborted) throw abortError(signal)
+        // Candidate confirmation failure drops this candidate only (D008).
+        confirmedFailed += 1
+        continue
+      }
+      if (isImageCapable(info)) {
+        candidates.push({ visionProvider: provider.id, visionModel: model.id })
+      } else {
+        confirmedFailed += 1
+      }
+    }
+  }
+  if (candidates.length === 0) {
+    const confirmationNote = confirmedFailed > 0
+      ? `[dsh-vision-bridge] ${confirmedFailed} candidate(s) declared image input in their catalog entry but could not be positively confirmed by exact-model metadata; they are not candidates.\n`
+      : ''
+    throw new Error(
+      `${confirmationNote}[dsh-vision-bridge] vision auto-discovery found no image-capable model: the current DSH environment declares no model that supports image input. Configure an image-capable model in DSH, or set visionProvider and visionModel explicitly.`,
+    )
+  }
+  if (candidates.length === 1) {
+    return candidates[0]!
+  }
+  const sorted = candidates.map((c) => `${c.visionProvider} / ${c.visionModel}`).sort()
+  throw new Error(
+    `[dsh-vision-bridge] vision auto-discovery found multiple image-capable models:\n${sorted.map((s) => `* ${s}`).join('\n')}\nPlease explicitly configure visionProvider and visionModel.`,
+  )
+}
+
 async function* bridgeStream(
   ctx: BridgeContextLike,
   options: GenerateOptionsLike,
-  routes: { upstreamProvider: string; visionProvider: string; visionModel: string },
+  routes: { upstreamProvider: string; visionTarget: (signal?: AbortSignal) => Promise<VisionTarget> },
   cache: EvidenceCache,
 ): AsyncGenerator<StreamChunkLike> {
   const signal = options.signal
@@ -266,7 +420,7 @@ async function resolveVisionRoute(
  */
 async function convertContent(
   ctx: BridgeContextLike,
-  routes: { upstreamProvider: string; visionProvider: string; visionModel: string },
+  routes: { upstreamProvider: string; visionTarget: (signal?: AbortSignal) => Promise<VisionTarget> },
   state: ConversionState,
   blocks: ContentBlockLike[],
   signal?: AbortSignal,
@@ -277,8 +431,12 @@ async function convertContent(
     if (run.length === 0) return
     const images = run.filter((block) => block?.type === 'image') as ImageBlockLike[]
     if (images.length === 0) {
+      // Pure-text run: never touches the vision target resolver (lazy proof).
       out.push(...run)
     } else {
+      // Resolve the vision target BEFORE any cache key construction so the
+      // key is built from the resolved (pinned) provider/model (D007).
+      const target = await routes.visionTarget(signal)
       // Stage 3B: cache key covers the whole work unit; eligibility is a
       // performance condition — ineligible units simply bypass the cache.
       const attachmentIds = images.map(imageAttachmentId)
@@ -287,8 +445,8 @@ async function convertContent(
       const key = eligible
         ? buildEvidenceCacheKey({
           sessionId: state.sessionId as string,
-          visionProvider: routes.visionProvider,
-          visionModel: routes.visionModel,
+          visionProvider: target.visionProvider,
+          visionModel: target.visionModel,
           orderedAttachmentIds: attachmentIds as string[],
         })
         : undefined
@@ -300,9 +458,9 @@ async function convertContent(
           evidence = cached
         } else {
           if (state.visionInfo === undefined) {
-            state.visionInfo = await resolveVisionRoute(ctx, routes, signal)
+            state.visionInfo = await resolveVisionRoute(ctx, target, signal)
           }
-          evidence = await analyzeSingleEvidence(ctx, routes, block, signal)
+          evidence = await analyzeSingleEvidence(ctx, target, block, signal)
           if (key !== undefined) state.cache.insertIfAbsent(key, evidence)
         }
         // Sealed Stage 1/1R single-image path: replace the image in place
@@ -315,7 +473,7 @@ async function convertContent(
           }
         }
       } else {
-        out.push(...await analyzeMultiImageRun(ctx, routes, state, run, images, signal, key))
+        out.push(...await analyzeMultiImageRun(ctx, target, state, run, images, signal, key))
       }
     }
     run = []
@@ -337,8 +495,10 @@ async function convertContent(
 
 /**
  * Sealed Stage 1/1R single-image analysis: one Vision invocation for one
- * ImageBlock occurrence, strict JSON Evidence contract. Returns the
- * validated canonical Evidence (Stage 3B caches this exact value).
+ * ImageBlock occurrence, strict JSON Evidence contract. v0.2.5 candidate:
+ * the bounded leading-U+200B envelope tolerance is enabled here too (see
+ * parseJsonStrict). Returns the validated canonical Evidence (Stage 3B
+ * caches this exact value).
  */
 async function analyzeSingleEvidence(
   ctx: BridgeContextLike,
@@ -361,7 +521,7 @@ async function analyzeSingleEvidence(
     }),
     signal,
   )
-  const parsed = parseJsonStrict(text)
+  const parsed = parseJsonStrict(text, { tolerateLeadingZwsp: true })
   const check = validateEvidence(parsed)
   if (!check.ok) {
     throw new Error(`[dsh-vision-bridge] vision evidence failed validation: ${check.violations.join(', ')}`)
@@ -492,9 +652,10 @@ async function collectMultiAttempt(
  * Strict-parse one MULTI attempt's text (v0.2.1). Returns the parsed value or
  * the typed parse failure — the parse outcome is distinguishable from every
  * other failure class (schema, provider, transport, cancellation, finish
- * state). This is the ONLY call site that enables the design-reviewed
- * multi-only leading-U+200B envelope tolerance; the sealed single-image path
- * keeps the default (no tolerance).
+ * state). Both this call site and the single-image path enable the
+ * design-reviewed leading-U+200B envelope tolerance (v0.2.5 candidate
+ * extended it to single-image after real-provider evidence of intermittent
+ * leading U+200B on single-image Vision output).
  */
 function tryParseStrict(text: string): unknown | VisionJsonParseError {
   try {
@@ -763,9 +924,17 @@ class VisionEvidenceValidationError extends Error {
  * U+200B inside the JSON value (strings/tokens) is never touched. The
  * remaining input must still be ONE complete JSON value accepted by strict
  * JSON.parse, and the sealed Evidence validator remains authoritative. This
- * is syntactic envelope tolerance, NOT semantic Evidence repair. The
- * single-image path keeps tolerateLeadingZwsp at its default (false) — the
- * sealed Stage 1/1R behavior is unchanged.
+ * is syntactic envelope tolerance, NOT semantic Evidence repair.
+ *
+ * v0.2.5 candidate (single-image U+200B envelope): the SAME bounded tolerance
+ * is now enabled on the single-image path (analyzeSingleEvidence passes
+ * tolerateLeadingZwsp: true). Real-provider evidence (2026-08-18, four
+ * consecutive single-image user-session failures; first observed
+ * intermittently on 2026-08-17) showed the vision route intermittently
+ * prefixing its otherwise-valid single-image Evidence JSON with U+200B, which
+ * the single-image path rejected fail-closed. The tolerance boundary is
+ * unchanged — leading U+200B run only, nothing else; single-image retry,
+ * temperature, prompt, and validator semantics stay untouched.
  */
 function parseJsonStrict(
   text: string,
@@ -781,8 +950,8 @@ function parseJsonStrict(
     }
   }
   if (options.tolerateLeadingZwsp === true) {
-    // Multi-only bounded envelope tolerance (U+200B only, leading run only,
-    // exactly once). Anchored at position 0 of the post-envelope candidate:
+    // Bounded envelope tolerance (U+200B only, leading run only, exactly
+    // once). Anchored at position 0 of the post-envelope candidate:
     // it can never alter U+200B inside the JSON value.
     candidate = candidate.replace(/^\u200B+/, '')
   }

@@ -109,6 +109,8 @@ export type AdapterRegistrationHandleLike = (() => void) & { replace?: (provider
 /** The llm service subset consumed (verified against index.ts anchors above). */
 export interface LlmRuntimeLike {
   registerAdapter(providers: string[], adapter: LlmAdapterLike): AdapterRegistrationHandleLike
+  /** Describe registered provider routes in registration order (synchronous). */
+  listProviders(): LlmProviderInfoLike[]
   listModels(provider: string): Promise<LlmModelInfoLike[]>
   resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfoLike>
   stream(options: GenerateOptionsLike): AsyncIterable<StreamChunkLike>

@@ -9,10 +9,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import {
-  addBundleEntry, backupPathFor, BRIDGE_PACKAGE_NAME, buildBridgeConfig, compareSemver, DSH_PIN,
-  formatBackupStamp, isSpaceFreeCmdSafe, LEGACY_PACKAGE_NAME, LEGACY_RELEASE_VERSIONS,
-  matchTarballSha, parseArgs,
-  pickTempRoot, PROVIDER_ID_PATTERN, PROFILE_NAME_PATTERN, RELEASE_MAP,
+  addBundleEntry, backupPathFor, BRIDGE_PACKAGE_NAME, buildBridgeConfig, compareSemver, configMode, DSH_PIN,
+  formatBackupStamp, isConfigAutoComplete, isConfigComplete, isSpaceFreeCmdSafe, LEGACY_PACKAGE_NAME,
+  LEGACY_RELEASE_VERSIONS, matchTarballSha, parseArgs, parseUpstreamCandidatesFile, pickTempRoot,
+  PROVIDER_ID_PATTERN, PROFILE_NAME_PATTERN, readUpstreamCandidates, RELEASE_MAP,
   resolveDshHome, resolveShimToNodeEntry, resolveTargetRelease,
   tempRootCandidates, usageText, validateProfileName, validateProviderId,
 } from '../../scripts/installer/setup-src.mjs'
@@ -68,7 +68,7 @@ test('parseArgs rejects unknown flags, missing values, duplicates, stray args', 
 
 test('usageText names the pinned DSH spec and default version', () => {
   const text = usageText()
-  assert.ok(text.includes('0.2.4'))
+  assert.ok(text.includes('0.2.5'))
   assert.ok(text.includes('--what-if'))
   assert.ok(text.includes('--tarball'))
 })
@@ -114,6 +114,175 @@ test('buildBridgeConfig mirrors the bridge runtime guards', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* V0.3.1 three-state config + upstream discovery                      */
+/* ------------------------------------------------------------------ */
+
+test('buildBridgeConfig three-state: single upstream = Auto, three keys = Manual, one vision key = fail', () => {
+  // Auto config (only upstreamProvider written).
+  const auto = buildBridgeConfig({ upstreamProvider: 'provider-a' })
+  assert.deepEqual(auto, { upstreamProvider: 'provider-a' })
+  assert.equal(configMode(auto), 'auto')
+  // Auto config with explicit providerId.
+  const autoWithId = buildBridgeConfig({ upstreamProvider: 'provider-a', providerId: 'my-bridge' })
+  assert.deepEqual(autoWithId, { upstreamProvider: 'provider-a', providerId: 'my-bridge' })
+  // Manual config (three keys).
+  const manual = buildBridgeConfig({ upstreamProvider: 'a', visionProvider: 'b', visionModel: 'm' })
+  assert.equal(configMode(manual), 'manual')
+  // Exactly one vision key → both-or-neither error.
+  assert.throws(() => buildBridgeConfig({ upstreamProvider: 'a', visionProvider: 'b' }), /together/)
+  assert.throws(() => buildBridgeConfig({ upstreamProvider: 'a', visionProvider: 'b' }), /visionProvider/)
+  assert.throws(() => buildBridgeConfig({ upstreamProvider: 'a', visionProvider: 'b' }), /visionModel/)
+  assert.throws(() => buildBridgeConfig({ upstreamProvider: 'a', visionModel: 'm' }), /together/)
+  // Auto recursion guard still applies.
+  assert.throws(() => buildBridgeConfig({ upstreamProvider: 'p', providerId: 'p' }), /wrap itself/)
+})
+
+test('isConfigComplete / isConfigAutoComplete / configMode classify all shapes', () => {
+  assert.equal(isConfigComplete({ upstreamProvider: 'a', visionProvider: 'b', visionModel: 'm' }), true)
+  assert.equal(isConfigComplete({ upstreamProvider: 'a' }), false)
+  assert.equal(isConfigComplete({ upstreamProvider: 'a', visionProvider: 'b' }), false)
+  assert.equal(isConfigComplete(null), false)
+  assert.equal(isConfigComplete('nope'), false)
+
+  assert.equal(isConfigAutoComplete({ upstreamProvider: 'a' }), true)
+  assert.equal(isConfigAutoComplete({ upstreamProvider: 'a', providerId: 'p' }), true)
+  assert.equal(isConfigAutoComplete({ upstreamProvider: 'a', visionProvider: 'b', visionModel: 'm' }), false)
+  assert.equal(isConfigAutoComplete({ upstreamProvider: 'a', visionProvider: 'b' }), false)
+  assert.equal(isConfigAutoComplete({ upstreamProvider: '  ' }), false)
+  assert.equal(isConfigAutoComplete({}), false)
+  assert.equal(isConfigAutoComplete(null), false)
+
+  assert.equal(configMode({ upstreamProvider: 'a', visionProvider: 'b', visionModel: 'm' }), 'manual')
+  assert.equal(configMode({ upstreamProvider: 'a' }), 'auto')
+  assert.equal(configMode({ upstreamProvider: 'a', visionProvider: 'b' }), 'invalid')
+  assert.equal(configMode({ upstreamProvider: 'a', visionModel: 'm' }), 'invalid')
+  assert.equal(configMode({ visionProvider: 'b', visionModel: 'm' }), 'invalid')
+  assert.equal(configMode(null), 'absent')
+  assert.equal(configMode(undefined), 'absent')
+  assert.equal(configMode('nope'), 'absent')
+  assert.equal(configMode([]), 'absent')
+})
+
+test('readUpstreamCandidates derives positive text-only candidates from pi-ai and deepseek sections', () => {
+  // pi-ai: one provider with an explicit [text] model -> candidate.
+  const single = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    provider-a:',
+    '      displayName: Provider A',
+    '      models:',
+    '        - id: text-model-1',
+    '          input: [ text ]',
+    '',
+  ].join('\n'))
+  assert.deepEqual(single, { status: 'ok', candidates: [{ provider: 'provider-a', displayName: 'Provider A' }] })
+
+  // [text, image] is excluded; missing input is UNKNOWN (not text-only).
+  const imageModel = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    p-img:',
+    '      models:',
+    '        - id: m1',
+    '          input: [ text, image ]',
+    '    p-unknown:',
+    '      models:',
+    '        - id: m2',
+    '    p-empty:',
+    '      models:',
+    '        - id: m3',
+    '          input: []',
+    '',
+  ].join('\n'))
+  assert.deepEqual(imageModel, { status: 'ok', candidates: [] })
+
+  // Mixed provider: one [text] model wins at route level (even with an image model present).
+  const mixed = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    p-mixed:',
+    '      displayName: Mixed',
+    '      models:',
+    '        - id: vision',
+    '          input: [ text, image ]',
+    '        - id: text',
+    '          input: [ text ]',
+    '',
+  ].join('\n'))
+  assert.deepEqual(mixed, { status: 'ok', candidates: [{ provider: 'p-mixed', displayName: 'Mixed' }] })
+})
+
+test('readUpstreamCandidates includes deepseek-official when the llm-deepseek section exists', () => {
+  const both = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    provider-a:',
+    '      displayName: Provider A',
+    '      models:',
+    '        - id: text-model-1',
+    '          input: [ text ]',
+    'llm-deepseek:',
+    '  some: key',
+    '',
+  ].join('\n'))
+  assert.deepEqual(both, {
+    status: 'ok',
+    candidates: [
+      { provider: 'deepseek-official', displayName: 'DeepSeek' },
+      { provider: 'provider-a', displayName: 'Provider A' },
+    ],
+  }, 'sorted by provider id')
+
+  // No llm-deepseek section -> no deepseek candidate.
+  const noDeepseek = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    provider-a:',
+    '      models:',
+    '        - id: text-model-1',
+    '          input: [ text ]',
+    '',
+  ].join('\n'))
+  assert.deepEqual(noDeepseek.candidates, [{ provider: 'provider-a', displayName: 'provider-a' }])
+})
+
+test('readUpstreamCandidates reports unreadable/empty/anomalous inputs', () => {
+  assert.deepEqual(readUpstreamCandidates('').candidates, [], 'empty document -> 0 candidates')
+  assert.deepEqual(readUpstreamCandidates('# only a comment\n').candidates, [])
+  assert.equal(readUpstreamCandidates('{{{{').status, 'unreadable')
+  assert.equal(readUpstreamCandidates('- just\n- a list\n').status, 'unreadable', 'top-level list is not a map')
+  assert.equal(readUpstreamCandidates('just a scalar\n').status, 'unreadable', 'top-level scalar is not a map')
+})
+
+test('readUpstreamCandidates skips malformed provider entries without failing the whole parse', () => {
+  const result = readUpstreamCandidates([
+    'llm-pi-ai:',
+    '  providers:',
+    '    p-good:',
+    '      models:',
+    '        - id: m1',
+    '          input: [ text ]',
+    '    p-no-models:',
+    '      displayName: No Models',
+    '    p-models-not-array:',
+    '      models: just-a-string',
+    '    p-models-not-map:',
+    '      models:',
+    '        - not-a-map',
+    '',
+  ].join('\n'))
+  assert.deepEqual(result, { status: 'ok', candidates: [{ provider: 'p-good', displayName: 'p-good' }] })
+})
+
+test('parseUpstreamCandidatesFile returns 0 candidates for a missing file and reports read errors', (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dg-ups-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  assert.deepEqual(parseUpstreamCandidatesFile(dir), { status: 'ok', candidates: [] })
+  writeFileSync(path.join(dir, 'settings.yaml'), 'llm-deepseek: {}\n')
+  assert.deepEqual(parseUpstreamCandidatesFile(dir), { status: 'ok', candidates: [{ provider: 'deepseek-official', displayName: 'DeepSeek' }] })
+})
+
+/* ------------------------------------------------------------------ */
 /* DSH_HOME                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -128,8 +297,14 @@ test('resolveDshHome mirrors DSH precedence and tilde expansion', () => {
 /* release map                                                         */
 /* ------------------------------------------------------------------ */
 
-test('release map is frozen; 0.2.4 carries the scoped identity; legacy releases stay trusted', () => {
+test('release map is frozen; 0.2.5 carries the scoped identity; legacy releases stay trusted', () => {
   assert.ok(Object.isFrozen(RELEASE_MAP))
+  const current = RELEASE_MAP['0.2.5']
+  assert.equal(current.asset, 'dsh-vision-bridge-0.2.5.tgz')
+  assert.equal(current.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.5/dsh-vision-bridge-0.2.5.tgz')
+  assert.match(current.sha256, /^[0-9A-F]{64}$/)
+  assert.equal(current.packageName, '@liangdacheng/dsh-vision-bridge')
+  assert.ok(current.url.endsWith(current.asset))
   const entry = RELEASE_MAP['0.2.4']
   assert.equal(entry.asset, 'dsh-vision-bridge-0.2.4.tgz')
   assert.equal(entry.url, 'https://github.com/TwistedRiCen/dsh-vision-bridge/releases/download/v0.2.4/dsh-vision-bridge-0.2.4.tgz')
@@ -151,7 +326,7 @@ test('bridge identity constants are frozen to the scoped/legacy split', () => {
 })
 
 test('resolveTargetRelease refuses unmapped versions for download', () => {
-  assert.equal(resolveTargetRelease({}).version, '0.2.4')
+  assert.equal(resolveTargetRelease({}).version, '0.2.5')
   assert.equal(resolveTargetRelease({ versionFlag: '0.2.4' }).source, 'download')
   assert.equal(resolveTargetRelease({ versionFlag: '0.2.3' }).source, 'download')
   assert.equal(resolveTargetRelease({ versionFlag: '0.2.2' }).source, 'download', '0.2.2 remains a mapped release')

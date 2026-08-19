@@ -33,8 +33,13 @@
  * before each ImageBlock, changing what the vision model receives for the
  * same attachment set (anti-merge request construction), so canonical
  * multi-image Evidence semantics change.
+ *
+ * v0.2.5 candidate: bumped 4 -> 5 — the bounded leading-U+200B parse
+ * tolerance (previously multi-only) is now also enabled on the single-image
+ * path, changing the tolerance semantics under which single-image Evidence
+ * can be accepted and cached.
  */
-export const EVIDENCE_POLICY_VERSION = 4
+export const EVIDENCE_POLICY_VERSION = 5
 
 /** The sealed single-image Evidence contract (Stage 1/1R). */
 export interface VisionEvidence {
